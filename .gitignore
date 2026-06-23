@@ -1,0 +1,12 @@
+.superpowers/
+.dotnet/
+build/
+bin/
+obj/
+output/
+exports/
+frames/
+*.tmp
+*.log
+Thumbs.db
+Desktop.ini
