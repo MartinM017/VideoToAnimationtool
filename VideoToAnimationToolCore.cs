@@ -196,6 +196,7 @@ namespace VideoToAnimationTool.Core
                 using (var graphics = Graphics.FromImage(sheet))
                 {
                     graphics.Clear(Color.FromArgb(0, 0, 0, 0));
+                    graphics.CompositingMode = CompositingMode.SourceCopy;
                     graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
                     graphics.PixelOffsetMode = PixelOffsetMode.Half;
                     for (var i = 0; i < bitmaps.Count; i++)

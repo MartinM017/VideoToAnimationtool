@@ -93,9 +93,11 @@ public static class ChromaKeyTests
             var sheetFrame1 = Path.Combine(tempRoot, "sheet-red.png");
             var sheetFrame2 = Path.Combine(tempRoot, "sheet-green.png");
             var removedFrame = Path.Combine(tempRoot, "sheet-blue.png");
+            var transparentFrame = Path.Combine(tempRoot, "sheet-transparent.png");
             using (var red = CreatePixel(Color.FromArgb(255, 255, 0, 0))) red.Save(sheetFrame1, ImageFormat.Png);
             using (var green = CreatePixel(Color.FromArgb(255, 0, 255, 0))) green.Save(sheetFrame2, ImageFormat.Png);
             using (var blue = CreatePixel(Color.FromArgb(255, 0, 0, 255))) blue.Save(removedFrame, ImageFormat.Png);
+            using (var transparent = CreatePixel(Color.FromArgb(0, 0, 0, 0))) transparent.Save(transparentFrame, ImageFormat.Png);
             var sheetPath = Path.Combine(tempRoot, "sheet.png");
             var sheetInfo = SpriteSheetExporter.Export(new[] { sheetFrame1, sheetFrame2 }, sheetPath, 2);
             AssertEqual(sheetInfo.FrameCount, 2, "sprite sheet exports active playback frame count");
@@ -105,6 +107,13 @@ public static class ChromaKeyTests
                 AssertEqual(sheet.Height, 1, "sprite sheet height uses active frames only");
                 AssertEqual(sheet.GetPixel(0, 0).R, 255, "sprite sheet first frame is red");
                 AssertEqual(sheet.GetPixel(1, 0).G, 255, "sprite sheet second frame is green");
+            }
+
+            var transparentSheetPath = Path.Combine(tempRoot, "sheet-transparent-output.png");
+            SpriteSheetExporter.Export(new[] { transparentFrame }, transparentSheetPath, 1);
+            using (var sheet = new Bitmap(transparentSheetPath))
+            {
+                AssertEqual(sheet.GetPixel(0, 0).A, 0, "sprite sheet preserves transparent alpha");
             }
         }
         finally
