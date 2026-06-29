@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -56,6 +57,7 @@ namespace VideoToAnimationTool.Desktop
         private readonly Slider softnessSlider = NewParameterSlider(DefaultSoftness);
         private readonly Slider colorDespillSlider = NewParameterSlider(DefaultColorDespill);
         private readonly Slider edgeCleanupSlider = NewParameterSlider(DefaultEdgeCleanup);
+        private readonly ComboBox backgroundEngineComboBox = new ComboBox();
         private readonly ComboBox presetComboBox = new ComboBox();
         private readonly Button loadPresetButton = new Button { Content = "Load" };
         private readonly Button savePresetButton = new Button { Content = "Save New" };
@@ -73,6 +75,7 @@ namespace VideoToAnimationTool.Desktop
         private readonly Canvas previewCanvas = new Canvas();
         private readonly WpfShapes.Polyline lassoLine = new WpfShapes.Polyline { StrokeThickness = 2 };
         private readonly ListBox frameListBox = new ListBox();
+        private readonly ListBox excludedFrameListBox = new ListBox();
         private readonly Button exportButton = new Button { Content = "Generate Frames" };
         private readonly Button cancelButton = new Button { Content = "Cancel", IsEnabled = false };
         private readonly Button removeSelectedButton = new Button { Content = "Remove Selected" };
@@ -83,6 +86,7 @@ namespace VideoToAnimationTool.Desktop
         private readonly Button removeWatermarkSelectedButton = new Button { Content = "Remove Selected" };
         private readonly Button removeWatermarkAllButton = new Button { Content = "Apply All Frames" };
         private readonly Button playButton = new Button { Content = "Play" };
+        private readonly Button exportSpriteSheetButton = new Button { Content = "Export Sheet" };
         private readonly CheckBox loopCheckBox = new CheckBox { Content = "Loop", IsChecked = true };
         private readonly DispatcherTimer previewTimer = new DispatcherTimer();
         private readonly Stack<UndoBatch> undoStack = new Stack<UndoBatch>();
@@ -90,6 +94,8 @@ namespace VideoToAnimationTool.Desktop
         private int currentFrameIndex;
         private Process exportProcess;
         private bool lassoMode;
+        private bool lassoDragging;
+        private readonly List<string> excludedFrames = new List<string>();
         private readonly List<Point> lassoPoints = new List<Point>();
         private readonly List<System.Drawing.PointF> lassoImagePoints = new List<System.Drawing.PointF>();
 
@@ -107,6 +113,12 @@ namespace VideoToAnimationTool.Desktop
             formatComboBox.SelectedIndex = 0;
             formatComboBox.Foreground = Brushes.Black;
             formatComboBox.Background = Brushes.White;
+            backgroundEngineComboBox.Items.Add("Auto Color Key");
+            backgroundEngineComboBox.Items.Add("Smart Matte");
+            backgroundEngineComboBox.Items.Add("OpenCV GrabCut");
+            backgroundEngineComboBox.SelectedIndex = 0;
+            backgroundEngineComboBox.Foreground = Brushes.Black;
+            backgroundEngineComboBox.Background = Brushes.White;
             Content = BuildLayout();
             WireEvents();
             LoadPresets();
@@ -199,7 +211,7 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildExportGroup()
         {
-            var card = NewCard("2. Sequence Frame Generation", 350);
+            var card = NewCard("2. Sequence Frame Generation", 370);
             var grid = NewFormGrid(9);
             AddLabeledControl(grid, 0, "Character", characterTextBox);
             AddLabeledControl(grid, 1, "Action", actionTextBox);
@@ -233,20 +245,21 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildGreenScreenGroup()
         {
-            var card = NewCard("4. Background Removal", 440);
-            var grid = NewFormGrid(10);
+            var card = NewCard("4. Background Removal", 500);
+            var grid = NewFormGrid(11);
             grid.RowDefinitions[0].Height = new GridLength(36);
             grid.RowDefinitions[1].Height = new GridLength(46);
-            grid.RowDefinitions[6].Height = GridLength.Auto;
-            grid.RowDefinitions[7].Height = new GridLength(50);
-            grid.RowDefinitions[8].Height = GridLength.Auto;
+            grid.RowDefinitions[7].Height = GridLength.Auto;
+            grid.RowDefinitions[8].Height = new GridLength(50);
+            grid.RowDefinitions[9].Height = GridLength.Auto;
             AddLabeledElement(grid, 0, "Preset", BuildPresetLoadControl());
             AddFullRow(grid, 1, BuildPresetEditButtons());
-            AddLabeledElement(grid, 2, "Tolerance", BuildSliderNumberControl(toleranceSlider, toleranceBox));
-            AddLabeledElement(grid, 3, "Edge Softness", BuildSliderNumberControl(softnessSlider, softnessBox));
-            AddLabeledElement(grid, 4, "Color Despill", BuildSliderNumberControl(colorDespillSlider, colorDespillBox));
-            AddLabeledElement(grid, 5, "Edge Cleanup", BuildSliderNumberControl(edgeCleanupSlider, edgeCleanupBox));
-            AddFullRow(grid, 6, new TextBlock { Text = "Select a frame thumbnail, test removal on that frame, then apply to all when it looks right.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
+            AddLabeledControl(grid, 2, "Engine", backgroundEngineComboBox);
+            AddLabeledElement(grid, 3, "Tolerance", BuildSliderNumberControl(toleranceSlider, toleranceBox));
+            AddLabeledElement(grid, 4, "Edge Softness", BuildSliderNumberControl(softnessSlider, softnessBox));
+            AddLabeledElement(grid, 5, "Color Despill", BuildSliderNumberControl(colorDespillSlider, colorDespillBox));
+            AddLabeledElement(grid, 6, "Edge Cleanup", BuildSliderNumberControl(edgeCleanupSlider, edgeCleanupBox));
+            AddFullRow(grid, 7, new TextBlock { Text = "Select a frame thumbnail, test removal on that frame, then apply to all when it looks right.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
             var buttons = new Grid { Margin = new Thickness(0, 10, 0, 0) };
             buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
@@ -265,21 +278,21 @@ namespace VideoToAnimationTool.Desktop
             buttons.Children.Add(removeSelectedButton);
             buttons.Children.Add(removeAllButton);
             buttons.Children.Add(undoButton);
-            AddFullRow(grid, 7, buttons);
-            AddFullRow(grid, 8, new TextBlock { Text = "Output: current frame folder\\cutout. Undo restores the last removal operation.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
+            AddFullRow(grid, 8, buttons);
+            AddFullRow(grid, 9, new TextBlock { Text = "Output: current frame folder\\cutout. Undo restores the last removal operation.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
             SetCardContent(card, grid);
             return card;
         }
 
         private UIElement BuildWatermarkGroup()
         {
-            var card = NewCard("5. Watermark Removal", 178);
+            var card = NewCard("5. Watermark Removal", 230);
             var grid = NewFormGrid(4);
             grid.RowDefinitions[0].Height = GridLength.Auto;
-            grid.RowDefinitions[1].Height = new GridLength(50);
-            grid.RowDefinitions[2].Height = new GridLength(50);
+            grid.RowDefinitions[1].Height = new GridLength(54);
+            grid.RowDefinitions[2].Height = new GridLength(54);
             grid.RowDefinitions[3].Height = GridLength.Auto;
-            AddFullRow(grid, 0, new TextBlock { Text = "Start lasso, click around the watermark on the preview, then double-click to close the lasso.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
+            AddFullRow(grid, 0, new TextBlock { Text = "Start lasso, drag around the watermark on the preview, then release. The lasso area will be cut to transparent alpha.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
 
             var row1 = new Grid { Margin = new Thickness(0, 10, 0, 0) };
             row1.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -305,7 +318,7 @@ namespace VideoToAnimationTool.Desktop
             row2.Children.Add(removeWatermarkAllButton);
             AddFullRow(grid, 2, row2);
 
-            AddFullRow(grid, 3, new TextBlock { Text = "Output: current frame folder\\watermark_removed. Use Undo Last if the fill is not right.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
+            AddFullRow(grid, 3, new TextBlock { Text = "Output: current frame folder\\watermark_removed. Use Undo Last if the cutout is not right.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
             SetCardContent(card, grid);
             return card;
         }
@@ -316,7 +329,8 @@ namespace VideoToAnimationTool.Desktop
             var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 180 });
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(6) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(132), MinHeight = 80 });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(118), MinHeight = 76 });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(86), MinHeight = 58 });
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) });
 
             previewCanvas.Background = Brushes.Transparent;
@@ -329,25 +343,26 @@ namespace VideoToAnimationTool.Desktop
             Grid.SetRow(border, 0);
             grid.Children.Add(border);
 
-            frameListBox.Background = BrushFrom(15, 23, 42);
-            frameListBox.Foreground = BrushFrom(226, 232, 240);
-            frameListBox.BorderBrush = BrushFrom(51, 65, 85);
-            frameListBox.Margin = new Thickness(0, 10, 0, 8); frameListBox.MinHeight = 118;
-            frameListBox.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
-            frameListBox.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
-            var itemsPanel = new FrameworkElementFactory(typeof(WrapPanel));
-            itemsPanel.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
-            frameListBox.ItemsPanel = new ItemsPanelTemplate(itemsPanel);
+            ConfigureFrameListBox(frameListBox, "Drag frames down to remove them from playback.");
+            ConfigureFrameListBox(excludedFrameListBox, "Drop removed frames here. Drag them back up to restore playback.");
             var previewSplitter = NewGridSplitter(Orientation.Horizontal);
             Grid.SetRow(previewSplitter, 1);
             grid.Children.Add(previewSplitter);
 
-            Grid.SetRow(frameListBox, 2);
-            grid.Children.Add(frameListBox);
+            var playbackPanel = BuildFrameListPanel("Playback Frames", frameListBox);
+            Grid.SetRow(playbackPanel, 2);
+            grid.Children.Add(playbackPanel);
+
+            var removedPanel = BuildFrameListPanel("Removed From Playback", excludedFrameListBox);
+            Grid.SetRow(removedPanel, 3);
+            grid.Children.Add(removedPanel);
 
             var controls = new StackPanel { Orientation = Orientation.Horizontal };
             playButton.Width = 76;
             controls.Children.Add(playButton);
+            exportSpriteSheetButton.Width = 118;
+            exportSpriteSheetButton.Margin = new Thickness(10, 0, 0, 0);
+            controls.Children.Add(exportSpriteSheetButton);
             controls.Children.Add(new TextBlock { Text = "Preview FPS", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 8, 0), Foreground = BrushFrom(203, 213, 225) });
             previewFpsBox.Width = 70;
             controls.Children.Add(previewFpsBox);
@@ -355,7 +370,7 @@ namespace VideoToAnimationTool.Desktop
             controls.Children.Add(loopCheckBox);
             frameCounterText.Margin = new Thickness(24, 6, 0, 0);
             controls.Children.Add(frameCounterText);
-            Grid.SetRow(controls, 3);
+            Grid.SetRow(controls, 4);
             grid.Children.Add(controls);
             SetCardContent(card, grid);
             return card;
@@ -384,6 +399,34 @@ namespace VideoToAnimationTool.Desktop
             return grid;
         }
 
+        private UIElement BuildFrameListPanel(string title, ListBox listBox)
+        {
+            var grid = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(18) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            var label = new TextBlock { Text = title, FontSize = 11, Foreground = BrushFrom(148, 163, 184), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRow(label, 0);
+            grid.Children.Add(label);
+            Grid.SetRow(listBox, 1);
+            grid.Children.Add(listBox);
+            return grid;
+        }
+
+        private void ConfigureFrameListBox(ListBox listBox, string tooltip)
+        {
+            listBox.Background = BrushFrom(15, 23, 42);
+            listBox.Foreground = BrushFrom(226, 232, 240);
+            listBox.BorderBrush = BrushFrom(51, 65, 85);
+            listBox.Margin = new Thickness(0, 0, 0, 0);
+            listBox.AllowDrop = true;
+            listBox.ToolTip = tooltip;
+            listBox.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+            listBox.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
+            var itemsPanel = new FrameworkElementFactory(typeof(WrapPanel));
+            itemsPanel.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
+            listBox.ItemsPanel = new ItemsPanelTemplate(itemsPanel);
+        }
+
         private void WireEvents()
         {
             characterTextBox.TextChanged += delegate { UpdateNamePreview(); };
@@ -403,13 +446,19 @@ namespace VideoToAnimationTool.Desktop
             updatePresetButton.Click += delegate { UpdateSelectedPreset(); };
             deletePresetButton.Click += delegate { DeleteSelectedPreset(); };
             playButton.Click += delegate { TogglePreview(); };
+            exportSpriteSheetButton.Click += async delegate { await ExportSpriteSheetAsync(); };
             previewFpsBox.TextChanged += delegate { UpdatePreviewTimer(); };
             BindSliderToBox(toleranceSlider, toleranceBox, DefaultTolerance);
             BindSliderToBox(softnessSlider, softnessBox, DefaultSoftness);
             BindSliderToBox(colorDespillSlider, colorDespillBox, DefaultColorDespill);
             BindSliderToBox(edgeCleanupSlider, edgeCleanupBox, DefaultEdgeCleanup);
             frameListBox.SelectionChanged += delegate { SelectFrameFromList(); };
+            frameListBox.PreviewMouseMove += FrameListBoxPreviewMouseMove;
+            frameListBox.Drop += ActiveFrameListDrop;
+            excludedFrameListBox.PreviewMouseMove += FrameListBoxPreviewMouseMove;
+            excludedFrameListBox.Drop += ExcludedFrameListDrop;
             previewCanvas.MouseLeftButtonDown += PreviewCanvasMouseLeftButtonDown;
+            previewCanvas.MouseLeftButtonUp += PreviewCanvasMouseLeftButtonUp;
             previewCanvas.MouseMove += PreviewCanvasMouseMove;
             previewTimer.Tick += delegate { AdvancePreview(); };
             Closing += delegate { CancelExport(); };
@@ -482,6 +531,8 @@ namespace VideoToAnimationTool.Desktop
             var softness = softnessBox.GetInt(DefaultSoftness);
             var colorDespill = colorDespillBox.GetInt(DefaultColorDespill);
             var edgeCleanup = edgeCleanupBox.GetInt(DefaultEdgeCleanup);
+            var useSmartMatte = IsSmartMatteSelected();
+            var useOpenCvGrabCut = IsOpenCvGrabCutSelected();
 
             try
             {
@@ -490,7 +541,7 @@ namespace VideoToAnimationTool.Desktop
                 {
                     if (!Directory.Exists(outputFolder)) Directory.CreateDirectory(outputFolder);
                     var undo = CaptureUndo(outputFolder, new[] { outputPath }, inputFolder, sourcePath);
-                    ProcessOneFrame(sourcePath, outputPath, tolerance, softness, colorDespill, edgeCleanup);
+                    ProcessOneFrame(sourcePath, outputPath, tolerance, softness, colorDespill, edgeCleanup, useSmartMatte, useOpenCvGrabCut);
                     Dispatcher.Invoke(delegate { undoStack.Push(undo); undoButton.IsEnabled = true; });
                 });
                 SetBusyForChroma(false, "Selected frame background removal finished. Preview is showing the processed frame.");
@@ -512,23 +563,25 @@ namespace VideoToAnimationTool.Desktop
                 return;
             }
 
-            var sourceFrames = PathUtils.GetFrameFiles(inputFolder);
-            if (sourceFrames.Length > 0 && MessageBox.Show("Apply background removal to all " + sourceFrames.Length + " frames?", "Apply To All", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            var sourceFrames = frames.ToArray();
+            if (sourceFrames.Length > 0 && MessageBox.Show("Apply background removal to " + sourceFrames.Length + " playback frame(s)? " + excludedFrames.Count + " removed frame(s) will be skipped.", "Apply To Playback Frames", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             if (sourceFrames.Length == 0)
             {
-                MessageBox.Show("No PNG/JPG frames were found.", "No Frames", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("No playback frames are available. Restore frames from Removed From Playback or load a frame folder first.", "No Playback Frames", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            var outputFolder = GetCutoutFolder(inputFolder);
+            var outputFolder = GetCutoutFolder(Path.GetDirectoryName(sourceFrames[0]));
             var tolerance = toleranceBox.GetInt(DefaultTolerance);
             var softness = softnessBox.GetInt(DefaultSoftness);
             var colorDespill = colorDespillBox.GetInt(DefaultColorDespill);
             var edgeCleanup = edgeCleanupBox.GetInt(DefaultEdgeCleanup);
+            var useSmartMatte = IsSmartMatteSelected();
+            var useOpenCvGrabCut = IsOpenCvGrabCutSelected();
 
             try
             {
-                SetBusyForChroma(true, "Applying background removal to all frames.");
+                SetBusyForChroma(true, "Applying background removal to playback frames.");
                 await Task.Run(delegate
                 {
                     EnsureCutoutMirror(inputFolder, outputFolder);
@@ -537,14 +590,14 @@ namespace VideoToAnimationTool.Desktop
                     var undo = CaptureUndo(outputFolder, outputPaths.ToArray(), inputFolder, null);
                     for (var i = 0; i < sourceFrames.Length; i++)
                     {
-                        ProcessOneFrame(sourceFrames[i], outputPaths[i], tolerance, softness, colorDespill, edgeCleanup);
+                        ProcessOneFrame(sourceFrames[i], outputPaths[i], tolerance, softness, colorDespill, edgeCleanup, useSmartMatte, useOpenCvGrabCut);
                         var done = i + 1;
                         var total = sourceFrames.Length;
                         Dispatcher.Invoke(delegate { SetStatus("Background removal " + done + " / " + total); });
                     }
                     Dispatcher.Invoke(delegate { undoStack.Push(undo); undoButton.IsEnabled = true; });
                 });
-                SetBusyForChroma(false, "All-frame background removal finished.");
+                SetBusyForChroma(false, "Playback-frame background removal finished.");
                 LoadFrameFolder(outputFolder);
             }
             catch (Exception ex)
@@ -668,7 +721,11 @@ namespace VideoToAnimationTool.Desktop
             lassoMode = !lassoMode;
             lassoModeButton.Content = lassoMode ? "Finish Lasso" : "Start Lasso";
             previewCanvas.Cursor = lassoMode ? Cursors.Cross : Cursors.Arrow;
-            if (lassoMode) SetStatus("Lasso mode on. Click around the watermark; double-click closes the shape.");
+            if (lassoMode)
+            {
+                ClearLassoPointsOnly();
+                SetStatus("Lasso mode on. Hold the left mouse button, drag around the watermark, then release.");
+            }
             else CloseLassoIfPossible();
         }
 
@@ -679,33 +736,64 @@ namespace VideoToAnimationTool.Desktop
             System.Drawing.PointF imagePoint;
             if (!TryCanvasPointToImagePoint(canvasPoint, out imagePoint)) return;
 
+            ClearLassoPointsOnly();
+            lassoDragging = true;
+            previewCanvas.CaptureMouse();
             lassoPoints.Add(canvasPoint);
             lassoImagePoints.Add(imagePoint);
             RedrawLasso(false);
-            if (e.ClickCount >= 2)
-            {
-                lassoMode = false;
-                lassoModeButton.Content = "Start Lasso";
-                previewCanvas.Cursor = Cursors.Arrow;
-                CloseLassoIfPossible();
-            }
         }
 
         private void PreviewCanvasMouseMove(object sender, MouseEventArgs e)
         {
-            if (!lassoMode || lassoPoints.Count == 0) return;
-            RedrawLasso(false, e.GetPosition(previewCanvas));
+            if (!lassoMode || !lassoDragging) return;
+            AddLassoPoint(e.GetPosition(previewCanvas));
+            RedrawLasso(false);
+        }
+
+        private void PreviewCanvasMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!lassoMode || !lassoDragging) return;
+            AddLassoPoint(e.GetPosition(previewCanvas));
+            lassoDragging = false;
+            previewCanvas.ReleaseMouseCapture();
+            lassoMode = false;
+            lassoModeButton.Content = "Start Lasso";
+            previewCanvas.Cursor = Cursors.Arrow;
+            CloseLassoIfPossible();
+        }
+
+        private void AddLassoPoint(Point canvasPoint)
+        {
+            System.Drawing.PointF imagePoint;
+            if (!TryCanvasPointToImagePoint(canvasPoint, out imagePoint)) return;
+            if (lassoPoints.Count > 0)
+            {
+                var last = lassoPoints[lassoPoints.Count - 1];
+                var dx = canvasPoint.X - last.X;
+                var dy = canvasPoint.Y - last.Y;
+                if ((dx * dx) + (dy * dy) < 9) return;
+            }
+            lassoPoints.Add(canvasPoint);
+            lassoImagePoints.Add(imagePoint);
         }
 
         private void ClearLasso()
         {
-            lassoPoints.Clear();
-            lassoImagePoints.Clear();
-            lassoLine.Points.Clear();
+            ClearLassoPointsOnly();
             lassoMode = false;
+            lassoDragging = false;
+            previewCanvas.ReleaseMouseCapture();
             lassoModeButton.Content = "Start Lasso";
             previewCanvas.Cursor = Cursors.Arrow;
             SetStatus("Watermark lasso cleared.");
+        }
+
+        private void ClearLassoPointsOnly()
+        {
+            lassoPoints.Clear();
+            lassoImagePoints.Clear();
+            lassoLine.Points.Clear();
         }
 
         private void CloseLassoIfPossible()
@@ -782,15 +870,121 @@ namespace VideoToAnimationTool.Desktop
             return undo;
         }
 
-        private void ProcessOneFrame(string sourcePath, string outputPath, int tolerance, int softness, int colorDespill, int edgeCleanup)
+        private bool IsSmartMatteSelected()
         {
+            return backgroundEngineComboBox.SelectedItem != null && Convert.ToString(backgroundEngineComboBox.SelectedItem, CultureInfo.InvariantCulture).IndexOf("Smart", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private bool IsOpenCvGrabCutSelected()
+        {
+            return backgroundEngineComboBox.SelectedItem != null && Convert.ToString(backgroundEngineComboBox.SelectedItem, CultureInfo.InvariantCulture).IndexOf("OpenCV", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private void ProcessOneFrame(string sourcePath, string outputPath, int tolerance, int softness, int colorDespill, int edgeCleanup, bool useSmartMatte, bool useOpenCvGrabCut)
+        {
+            if (useOpenCvGrabCut)
+            {
+                ProcessOneFrameWithOpenCvGrabCut(sourcePath, outputPath, tolerance, softness, colorDespill, edgeCleanup);
+                return;
+            }
+
             System.Drawing.Bitmap cutout;
-            using (var source = new System.Drawing.Bitmap(sourcePath)) cutout = GreenScreenRemover.RemoveGreenScreen(source, tolerance, softness, colorDespill, edgeCleanup);
+            using (var source = new System.Drawing.Bitmap(sourcePath))
+            {
+                cutout = useSmartMatte
+                    ? GreenScreenRemover.RemoveSmartMatteBackground(source, tolerance, softness, colorDespill, edgeCleanup)
+                    : GreenScreenRemover.RemoveGreenScreen(source, tolerance, softness, colorDespill, edgeCleanup);
+            }
             using (cutout) cutout.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+        }
+
+        private void ProcessOneFrameWithOpenCvGrabCut(string sourcePath, string outputPath)
+        {
+            ProcessOneFrameWithOpenCvGrabCut(sourcePath, outputPath, DefaultTolerance, DefaultSoftness, DefaultColorDespill, DefaultEdgeCleanup);
+        }
+
+        private void ProcessOneFrameWithOpenCvGrabCut(string sourcePath, string outputPath, int tolerance, int softness, int colorDespill, int edgeCleanup)
+        {
+            var helper = FindOpenCvGrabCutHelper();
+            if (String.IsNullOrWhiteSpace(helper))
+            {
+                throw new FileNotFoundException("OpenCV GrabCut helper was not found. Build it by running tools\\build-opencv-grabcut-helper.bat from an x64 Native Tools Command Prompt for VS 2022.");
+            }
+
+            var outputFolder = Path.GetDirectoryName(outputPath);
+            if (!Directory.Exists(outputFolder)) Directory.CreateDirectory(outputFolder);
+            var maskPath = Path.Combine(Path.GetTempPath(), "vta-opencv-mask-" + Guid.NewGuid().ToString("N") + ".png");
+            try
+            {
+                SaveInitialAlphaMask(sourcePath, maskPath, tolerance, softness, colorDespill, edgeCleanup);
+                RunOpenCvGrabCutHelper(helper, sourcePath, outputPath, maskPath);
+            }
+            finally
+            {
+                if (File.Exists(maskPath)) File.Delete(maskPath);
+            }
+        }
+
+        private void RunOpenCvGrabCutHelper(string helper, string sourcePath, string outputPath, string maskPath)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = helper,
+                Arguments = FfmpegHelper.ToArgumentString(new[] { sourcePath, outputPath, "5", maskPath }),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            var toolFolder = Path.GetDirectoryName(helper);
+            var opencvBin = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "opencv", "build", "x64", "vc16", "bin");
+            startInfo.EnvironmentVariables["PATH"] = toolFolder + Path.PathSeparator + opencvBin + Path.PathSeparator + (startInfo.EnvironmentVariables["PATH"] ?? String.Empty);
+
+            using (var process = Process.Start(startInfo))
+            {
+                var stdout = process.StandardOutput.ReadToEnd();
+                var stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                {
+                    throw new InvalidOperationException("OpenCV GrabCut failed with exit code " + process.ExitCode + "." + Environment.NewLine + stdout + Environment.NewLine + stderr);
+                }
+            }
+        }
+
+        private void SaveInitialAlphaMask(string sourcePath, string maskPath, int tolerance, int softness, int colorDespill, int edgeCleanup)
+        {
+            using (var source = new System.Drawing.Bitmap(sourcePath))
+            using (var keyed = GreenScreenRemover.RemoveGreenScreen(source, tolerance, softness, colorDespill, edgeCleanup))
+            using (var mask = new System.Drawing.Bitmap(keyed.Width, keyed.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                for (var y = 0; y < keyed.Height; y++)
+                {
+                    for (var x = 0; x < keyed.Width; x++)
+                    {
+                        var alpha = keyed.GetPixel(x, y).A;
+                        mask.SetPixel(x, y, System.Drawing.Color.FromArgb(255, alpha, alpha, alpha));
+                    }
+                }
+                mask.Save(maskPath, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+
+        private string FindOpenCvGrabCutHelper()
+        {
+            var candidates = new[]
+            {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tools", "opencv-grabcut-helper.exe"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "opencv-grabcut-helper.exe")
+            };
+            foreach (var candidate in candidates) if (File.Exists(candidate)) return candidate;
+            return null;
         }
 
         private void ProcessWatermarkFrame(string sourcePath, string outputPath, System.Drawing.PointF[] polygon)
         {
+            var outputFolder = Path.GetDirectoryName(outputPath);
+            if (!Directory.Exists(outputFolder)) Directory.CreateDirectory(outputFolder);
             System.Drawing.Bitmap cleaned;
             using (var source = new System.Drawing.Bitmap(sourcePath)) cleaned = WatermarkRemover.RemoveWatermark(source, polygon);
             using (cleaned) cleaned.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
@@ -798,7 +992,7 @@ namespace VideoToAnimationTool.Desktop
 
         private void CancelExport() { if (exportProcess != null && !exportProcess.HasExited) { exportProcess.Kill(); SetStatus("Export cancelled."); } }
 
-        private void BrowseVideo()
+        private async void BrowseVideo()
         {
             var dialog = new OpenFileDialog { Title = "Choose AI character action video", Filter = "Video files|*.mp4;*.mov;*.webm;*.avi|All files|*.*" };
             if (dialog.ShowDialog(this) == true)
@@ -806,6 +1000,68 @@ namespace VideoToAnimationTool.Desktop
                 videoPathTextBox.Text = dialog.FileName;
                 metadataText.Text = "Selected: " + Path.GetFileName(dialog.FileName);
                 if (String.IsNullOrWhiteSpace(outputFolderTextBox.Text)) outputFolderTextBox.Text = Path.Combine(Path.GetDirectoryName(dialog.FileName), "frames");
+                await DetectVideoDurationAsync(dialog.FileName);
+            }
+        }
+
+        private async Task DetectVideoDurationAsync(string videoPath)
+        {
+            var ffmpeg = FfmpegHelper.FindExecutable(AppDomain.CurrentDomain.BaseDirectory);
+            if (String.IsNullOrWhiteSpace(ffmpeg))
+            {
+                metadataText.Text = "Selected: " + Path.GetFileName(videoPath) + " (FFmpeg not found, duration not detected)";
+                return;
+            }
+
+            SetStatus("Detecting video duration.");
+            var durationHolder = new double[1];
+            var detected = await Task.Run(delegate { return TryReadVideoDuration(ffmpeg, videoPath, out durationHolder[0]); });
+            var duration = durationHolder[0];
+            if (!detected || duration <= 0)
+            {
+                metadataText.Text = "Selected: " + Path.GetFileName(videoPath) + " (duration not detected)";
+                SetStatus("Video selected. Duration could not be detected.");
+                return;
+            }
+
+            endSecondsBox.Text = duration.ToString("0.###", CultureInfo.InvariantCulture);
+            metadataText.Text = "Selected: " + Path.GetFileName(videoPath) + " | Duration: " + duration.ToString("0.###", CultureInfo.InvariantCulture) + "s";
+            SetStatus("Video duration detected: " + duration.ToString("0.###", CultureInfo.InvariantCulture) + " seconds.");
+        }
+
+        private static bool TryReadVideoDuration(string ffmpegPath, string videoPath, out double seconds)
+        {
+            seconds = 0;
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = FfmpegHelper.ToArgumentString(new[] { "-hide_banner", "-i", videoPath }),
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                using (var process = Process.Start(startInfo))
+                {
+                    var stdout = process.StandardOutput.ReadToEnd();
+                    var stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    var text = stdout + Environment.NewLine + stderr;
+                    var match = System.Text.RegularExpressions.Regex.Match(text, @"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)");
+                    if (!match.Success) return false;
+                    var hours = Double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                    var minutes = Double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                    var secs = Double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                    seconds = (hours * 3600) + (minutes * 60) + secs;
+                    return true;
+                }
+            }
+            catch
+            {
+                seconds = 0;
+                return false;
             }
         }
 
@@ -844,6 +1100,7 @@ namespace VideoToAnimationTool.Desktop
         private void LoadFrameFolder(string folderPath)
         {
             frames = PathUtils.GetFrameFiles(folderPath);
+            excludedFrames.Clear();
             currentFrameIndex = 0;
             frameFolderTextBox.Text = folderPath;
             ClearLasso();
@@ -869,6 +1126,7 @@ namespace VideoToAnimationTool.Desktop
             }
 
             frames = new[] { imagePath };
+            excludedFrames.Clear();
             currentFrameIndex = 0;
             frameFolderTextBox.Text = Path.GetDirectoryName(imagePath);
             ClearLasso();
@@ -881,13 +1139,32 @@ namespace VideoToAnimationTool.Desktop
         private void BuildFrameThumbnailList()
         {
             frameListBox.Items.Clear();
+            excludedFrameListBox.Items.Clear();
             for (var i = 0; i < frames.Length; i++)
             {
-                var stack = new StackPanel { Width = 96, Margin = new Thickness(4) };
-                stack.Children.Add(new Image { Source = LoadBitmapImage(frames[i], 86), Width = 86, Height = 68, Stretch = Stretch.Uniform });
-                stack.Children.Add(new TextBlock { Text = Path.GetFileName(frames[i]), TextAlignment = TextAlignment.Center, FontSize = 10, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = BrushFrom(203, 213, 225) });
-                frameListBox.Items.Add(new ListBoxItem { Content = stack, Tag = i, Background = BrushFrom(15, 23, 42), Foreground = BrushFrom(226, 232, 240), BorderBrush = BrushFrom(51, 65, 85), Padding = new Thickness(3) });
+                frameListBox.Items.Add(CreateFrameListItem(frames[i], i, true));
             }
+            for (var i = 0; i < excludedFrames.Count; i++)
+            {
+                excludedFrameListBox.Items.Add(CreateFrameListItem(excludedFrames[i], i, false));
+            }
+        }
+
+        private ListBoxItem CreateFrameListItem(string path, int index, bool active)
+        {
+            var stack = new StackPanel { Width = active ? 96 : 84, Margin = new Thickness(4) };
+            stack.Children.Add(new Image { Source = LoadBitmapImage(path, active ? 86 : 72), Width = active ? 86 : 72, Height = active ? 68 : 48, Stretch = Stretch.Uniform });
+            stack.Children.Add(new TextBlock { Text = Path.GetFileName(path), TextAlignment = TextAlignment.Center, FontSize = 10, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = BrushFrom(203, 213, 225) });
+            return new ListBoxItem
+            {
+                Content = stack,
+                Tag = path,
+                Background = active ? BrushFrom(15, 23, 42) : BrushFrom(30, 41, 59),
+                Foreground = BrushFrom(226, 232, 240),
+                BorderBrush = BrushFrom(51, 65, 85),
+                Padding = new Thickness(3),
+                ToolTip = (active ? "Playback frame " : "Removed frame ") + (index + 1) + ": " + path
+            };
         }
 
         private BitmapImage LoadBitmapImage(string path, int decodeWidth)
@@ -906,7 +1183,11 @@ namespace VideoToAnimationTool.Desktop
         {
             var item = frameListBox.SelectedItem as ListBoxItem;
             if (item == null) return;
-            currentFrameIndex = (int)item.Tag;
+            var path = item.Tag as string;
+            if (String.IsNullOrWhiteSpace(path)) return;
+            var index = Array.FindIndex(frames, frame => String.Equals(frame, path, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) return;
+            currentFrameIndex = index;
             ShowCurrentFrame();
         }
 
@@ -916,6 +1197,131 @@ namespace VideoToAnimationTool.Desktop
             {
                 if (String.Equals(frames[i], path, StringComparison.OrdinalIgnoreCase)) { frameListBox.SelectedIndex = i; return; }
             }
+        }
+
+        private void FrameListBoxPreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) return;
+            var item = FindParentListBoxItem(e.OriginalSource as DependencyObject);
+            if (item == null) return;
+            var path = item.Tag as string;
+            if (String.IsNullOrWhiteSpace(path)) return;
+
+            var data = new DataObject();
+            data.SetData("VideoToAnimationFramePath", path);
+            data.SetData("VideoToAnimationFrameSource", ReferenceEquals(sender, frameListBox) ? "active" : "excluded");
+            DragDrop.DoDragDrop(item, data, DragDropEffects.Move);
+        }
+
+        private void ExcludedFrameListDrop(object sender, DragEventArgs e)
+        {
+            var path = e.Data.GetData("VideoToAnimationFramePath") as string;
+            var source = e.Data.GetData("VideoToAnimationFrameSource") as string;
+            if (!String.Equals(source, "active", StringComparison.OrdinalIgnoreCase) || String.IsNullOrWhiteSpace(path)) return;
+            MoveFrameToExcluded(path);
+        }
+
+        private void ActiveFrameListDrop(object sender, DragEventArgs e)
+        {
+            var path = e.Data.GetData("VideoToAnimationFramePath") as string;
+            var source = e.Data.GetData("VideoToAnimationFrameSource") as string;
+            if (!String.Equals(source, "excluded", StringComparison.OrdinalIgnoreCase) || String.IsNullOrWhiteSpace(path)) return;
+            MoveFrameToActive(path);
+        }
+
+        private void MoveFrameToExcluded(string path)
+        {
+            var list = new List<string>(frames);
+            var index = list.FindIndex(frame => String.Equals(frame, path, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) return;
+            StopPreview();
+            list.RemoveAt(index);
+            if (!excludedFrames.Any(frame => String.Equals(frame, path, StringComparison.OrdinalIgnoreCase))) excludedFrames.Add(path);
+            frames = list.ToArray();
+            currentFrameIndex = Math.Min(currentFrameIndex, Math.Max(0, frames.Length - 1));
+            BuildFrameThumbnailList();
+            if (frames.Length > 0)
+            {
+                frameListBox.SelectedIndex = currentFrameIndex;
+                ShowCurrentFrame();
+            }
+            else
+            {
+                previewImage.Source = null;
+                frameCounterText.Text = "Frame 0 / 0";
+            }
+            SetStatus("Removed from playback: " + Path.GetFileName(path) + ". Active " + frames.Length + ", removed " + excludedFrames.Count + ".");
+        }
+
+        private void MoveFrameToActive(string path)
+        {
+            var index = excludedFrames.FindIndex(frame => String.Equals(frame, path, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) return;
+            StopPreview();
+            excludedFrames.RemoveAt(index);
+            var list = new List<string>(frames);
+            if (!list.Any(frame => String.Equals(frame, path, StringComparison.OrdinalIgnoreCase))) list.Add(path);
+            frames = list.ToArray();
+            currentFrameIndex = frames.Length - 1;
+            BuildFrameThumbnailList();
+            frameListBox.SelectedIndex = currentFrameIndex;
+            ShowCurrentFrame();
+            SetStatus("Restored to playback: " + Path.GetFileName(path) + ". Active " + frames.Length + ", removed " + excludedFrames.Count + ".");
+        }
+
+        private async Task ExportSpriteSheetAsync()
+        {
+            if (frames.Length == 0)
+            {
+                MessageBox.Show("No playback frames are available. Generate or load frames first.", "No Frames", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var defaultFolder = !String.IsNullOrWhiteSpace(frameFolderTextBox.Text) && Directory.Exists(frameFolderTextBox.Text)
+                ? frameFolderTextBox.Text
+                : Path.GetDirectoryName(frames[0]);
+            var dialog = new SaveFileDialog
+            {
+                Title = "Export sprite sheet",
+                Filter = "PNG image|*.png",
+                FileName = "sprite_sheet_" + DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".png",
+                InitialDirectory = defaultFolder
+            };
+            if (dialog.ShowDialog(this) != true) return;
+
+            var activeFrames = frames.ToArray();
+            var columns = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(activeFrames.Length)));
+            try
+            {
+                exportSpriteSheetButton.IsEnabled = false;
+                progressBar.IsIndeterminate = true;
+                SetStatus("Exporting sprite sheet from " + activeFrames.Length + " playback frame(s).");
+                SpriteSheetResult result = null;
+                await Task.Run(delegate { result = SpriteSheetExporter.Export(activeFrames, dialog.FileName, columns); });
+                progressBar.IsIndeterminate = false;
+                exportSpriteSheetButton.IsEnabled = true;
+                SetStatus("Sprite sheet exported: " + result.Columns + " x " + result.Rows + " cells, " + result.FrameCount + " frame(s).");
+                MessageBox.Show("Sprite sheet exported:" + Environment.NewLine + dialog.FileName, "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                progressBar.IsIndeterminate = false;
+                exportSpriteSheetButton.IsEnabled = true;
+                SetStatus("Sprite sheet export failed.");
+                MessageBox.Show(ex.Message, "Sprite Sheet Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddLog(ex.ToString());
+            }
+        }
+
+        private static ListBoxItem FindParentListBoxItem(DependencyObject source)
+        {
+            while (source != null)
+            {
+                var item = source as ListBoxItem;
+                if (item != null) return item;
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return null;
         }
 
         private void TogglePreview()
@@ -965,16 +1371,35 @@ namespace VideoToAnimationTool.Desktop
             var bitmap = previewImage.Source as BitmapSource;
             if (bitmap == null || previewCanvas.ActualWidth <= 0 || previewCanvas.ActualHeight <= 0 || bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0) return false;
 
-            var scale = Math.Min(previewCanvas.ActualWidth / bitmap.PixelWidth, previewCanvas.ActualHeight / bitmap.PixelHeight);
-            var displayedWidth = bitmap.PixelWidth * scale;
-            var displayedHeight = bitmap.PixelHeight * scale;
-            var offsetX = (previewCanvas.ActualWidth - displayedWidth) / 2.0;
-            var offsetY = (previewCanvas.ActualHeight - displayedHeight) / 2.0;
-            var x = (canvasPoint.X - offsetX) / scale;
-            var y = (canvasPoint.Y - offsetY) / scale;
-            if (x < 0 || y < 0 || x >= bitmap.PixelWidth || y >= bitmap.PixelHeight) return false;
-            imagePoint = new System.Drawing.PointF((float)x, (float)y);
-            return true;
+            var sourceWidth = bitmap.PixelWidth;
+            var sourceHeight = bitmap.PixelHeight;
+            if (frames.Length > 0 && currentFrameIndex >= 0 && currentFrameIndex < frames.Length && File.Exists(frames[currentFrameIndex]))
+            {
+                try
+                {
+                    using (var source = new System.Drawing.Bitmap(frames[currentFrameIndex]))
+                    {
+                        sourceWidth = source.Width;
+                        sourceHeight = source.Height;
+                    }
+                }
+                catch
+                {
+                    sourceWidth = bitmap.PixelWidth;
+                    sourceHeight = bitmap.PixelHeight;
+                }
+            }
+
+            return PreviewCoordinateMapper.TryMapCanvasToImage(
+                canvasPoint.X,
+                canvasPoint.Y,
+                previewCanvas.ActualWidth,
+                previewCanvas.ActualHeight,
+                bitmap.PixelWidth,
+                bitmap.PixelHeight,
+                sourceWidth,
+                sourceHeight,
+                out imagePoint);
         }
 
         private void UpdatePreviewTimer()
@@ -1145,11 +1570,14 @@ namespace VideoToAnimationTool.Desktop
         {
             var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = Double.IsNaN(height) ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
             var titleBlock = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 0, 0, 10), Foreground = BrushFrom(241, 245, 249) };
             Grid.SetRow(titleBlock, 0);
             grid.Children.Add(titleBlock);
-            return new Border { Height = height, Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(14), Background = BrushFrom(17, 24, 39), BorderBrush = BrushFrom(30, 41, 59), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
+            var card = new Border { Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(14), Background = BrushFrom(17, 24, 39), BorderBrush = BrushFrom(30, 41, 59), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
+            if (!Double.IsNaN(height)) card.MinHeight = height;
+            else { card.VerticalAlignment = VerticalAlignment.Stretch; card.Height = Double.NaN; }
+            return card;
         }
 
         private static void SetCardContent(Border card, UIElement content)

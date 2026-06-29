@@ -42,15 +42,28 @@ public static class ChromaKeyTests
                 AssertTrue(edgeResult.GetPixel(1, 1).A < 220, "edge cleanup reduces alpha on green fringe next to transparency");
             }
 
+            PointF mapped;
+            var mappedOk = PreviewCoordinateMapper.TryMapCanvasToImage(95, 175, 100, 200, 50, 100, 100, 200, out mapped);
+            AssertTrue(mappedOk, "maps canvas point inside preview image");
+            AssertEqual((int)Math.Round(mapped.X), 95, "maps preview x back to source x");
+            AssertEqual((int)Math.Round(mapped.Y), 175, "maps preview y back to source y");
+
             using (var watermarkSource = CreateWatermarkSample())
             using (var watermarkResult = WatermarkRemover.RemoveWatermark(watermarkSource, new[] {
-                new PointF(1, 1),
-                new PointF(3, 1),
-                new PointF(3, 3),
-                new PointF(1, 3)
+                new PointF(0, 0),
+                new PointF(4, 0),
+                new PointF(4, 4),
+                new PointF(0, 4)
             }))
             {
-                AssertTrue(watermarkResult.GetPixel(2, 2).G > 200, "watermark removal fills lasso from surrounding pixels");
+                AssertEqual(watermarkResult.GetPixel(2, 2).A, 0, "watermark removal clears lasso to transparent alpha");
+            }
+
+            using (var smartSample = CreateSmartMatteSample())
+            using (var smartResult = GreenScreenRemover.RemoveSmartMatteBackground(smartSample, 80, 60, 75, 70))
+            {
+                AssertTrue(smartResult.GetPixel(5, 5).A > 200, "smart matte keeps main subject component");
+                AssertEqual(smartResult.GetPixel(0, 5).A, 0, "smart matte removes small border artifact");
             }
 
             var sequenceFolder = Path.Combine(tempRoot, "green-sequence");
@@ -75,6 +88,23 @@ public static class ChromaKeyTests
             using (var output = new Bitmap(Path.Combine(cutoutFolder, "hero_0001.png")))
             {
                 AssertEqual(output.GetPixel(0, 0).A, 0, "folder output preserves transparency");
+            }
+
+            var sheetFrame1 = Path.Combine(tempRoot, "sheet-red.png");
+            var sheetFrame2 = Path.Combine(tempRoot, "sheet-green.png");
+            var removedFrame = Path.Combine(tempRoot, "sheet-blue.png");
+            using (var red = CreatePixel(Color.FromArgb(255, 255, 0, 0))) red.Save(sheetFrame1, ImageFormat.Png);
+            using (var green = CreatePixel(Color.FromArgb(255, 0, 255, 0))) green.Save(sheetFrame2, ImageFormat.Png);
+            using (var blue = CreatePixel(Color.FromArgb(255, 0, 0, 255))) blue.Save(removedFrame, ImageFormat.Png);
+            var sheetPath = Path.Combine(tempRoot, "sheet.png");
+            var sheetInfo = SpriteSheetExporter.Export(new[] { sheetFrame1, sheetFrame2 }, sheetPath, 2);
+            AssertEqual(sheetInfo.FrameCount, 2, "sprite sheet exports active playback frame count");
+            using (var sheet = new Bitmap(sheetPath))
+            {
+                AssertEqual(sheet.Width, 2, "sprite sheet width uses active frames only");
+                AssertEqual(sheet.Height, 1, "sprite sheet height uses active frames only");
+                AssertEqual(sheet.GetPixel(0, 0).R, 255, "sprite sheet first frame is red");
+                AssertEqual(sheet.GetPixel(1, 0).G, 255, "sprite sheet second frame is green");
             }
         }
         finally
@@ -149,6 +179,21 @@ public static class ChromaKeyTests
             for (var x = 0; x < 5; x++) bitmap.SetPixel(x, y, Color.FromArgb(255, 0, 255, 0));
         }
         bitmap.SetPixel(2, 2, Color.FromArgb(255, 255, 255, 255));
+        return bitmap;
+    }
+
+    private static Bitmap CreateSmartMatteSample()
+    {
+        var bitmap = new Bitmap(10, 10, PixelFormat.Format32bppArgb);
+        for (var y = 0; y < 10; y++)
+        {
+            for (var x = 0; x < 10; x++) bitmap.SetPixel(x, y, Color.FromArgb(255, 255, 0, 220));
+        }
+        for (var y = 3; y <= 6; y++)
+        {
+            for (var x = 3; x <= 6; x++) bitmap.SetPixel(x, y, Color.FromArgb(255, 30, 30, 30));
+        }
+        bitmap.SetPixel(0, 5, Color.FromArgb(255, 35, 35, 35));
         return bitmap;
     }
 

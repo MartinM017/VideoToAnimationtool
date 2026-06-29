@@ -69,6 +69,38 @@ namespace VideoToAnimationTool.Core
         }
     }
 
+    public static class PreviewCoordinateMapper
+    {
+        public static bool TryMapCanvasToImage(
+            double canvasX,
+            double canvasY,
+            double canvasWidth,
+            double canvasHeight,
+            int previewPixelWidth,
+            int previewPixelHeight,
+            int sourcePixelWidth,
+            int sourcePixelHeight,
+            out PointF imagePoint)
+        {
+            imagePoint = new PointF();
+            if (canvasWidth <= 0 || canvasHeight <= 0 || previewPixelWidth <= 0 || previewPixelHeight <= 0 || sourcePixelWidth <= 0 || sourcePixelHeight <= 0) return false;
+
+            var scale = Math.Min(canvasWidth / previewPixelWidth, canvasHeight / previewPixelHeight);
+            var displayedWidth = previewPixelWidth * scale;
+            var displayedHeight = previewPixelHeight * scale;
+            var offsetX = (canvasWidth - displayedWidth) / 2.0;
+            var offsetY = (canvasHeight - displayedHeight) / 2.0;
+            var previewX = (canvasX - offsetX) / scale;
+            var previewY = (canvasY - offsetY) / scale;
+            if (previewX < 0 || previewY < 0 || previewX >= previewPixelWidth || previewY >= previewPixelHeight) return false;
+
+            var sourceX = previewX * sourcePixelWidth / previewPixelWidth;
+            var sourceY = previewY * sourcePixelHeight / previewPixelHeight;
+            imagePoint = new PointF((float)sourceX, (float)sourceY);
+            return true;
+        }
+    }
+
     public static class FfmpegHelper
     {
         public static string FindExecutable(string appRoot)
@@ -120,6 +152,73 @@ namespace VideoToAnimationTool.Core
         public string OutputFolder { get; private set; }
     }
 
+    public sealed class SpriteSheetResult
+    {
+        public SpriteSheetResult(int frameCount, int columns, int rows, int frameWidth, int frameHeight, string outputPath)
+        {
+            FrameCount = frameCount;
+            Columns = columns;
+            Rows = rows;
+            FrameWidth = frameWidth;
+            FrameHeight = frameHeight;
+            OutputPath = outputPath;
+        }
+
+        public int FrameCount { get; private set; }
+        public int Columns { get; private set; }
+        public int Rows { get; private set; }
+        public int FrameWidth { get; private set; }
+        public int FrameHeight { get; private set; }
+        public string OutputPath { get; private set; }
+    }
+
+    public static class SpriteSheetExporter
+    {
+        public static SpriteSheetResult Export(string[] framePaths, string outputPath, int columns)
+        {
+            if (framePaths == null || framePaths.Length == 0) throw new ArgumentException("At least one frame is required.", "framePaths");
+            if (String.IsNullOrWhiteSpace(outputPath)) throw new ArgumentException("Output path is required.", "outputPath");
+            columns = Math.Max(1, Math.Min(columns, framePaths.Length));
+
+            var bitmaps = new List<Bitmap>();
+            try
+            {
+                foreach (var path in framePaths)
+                {
+                    if (String.IsNullOrWhiteSpace(path) || !File.Exists(path)) throw new FileNotFoundException("Frame file was not found.", path);
+                    bitmaps.Add(new Bitmap(path));
+                }
+
+                var frameWidth = bitmaps.Max(bitmap => bitmap.Width);
+                var frameHeight = bitmaps.Max(bitmap => bitmap.Height);
+                var rows = (int)Math.Ceiling(bitmaps.Count / (double)columns);
+                using (var sheet = new Bitmap(frameWidth * columns, frameHeight * rows, PixelFormat.Format32bppArgb))
+                using (var graphics = Graphics.FromImage(sheet))
+                {
+                    graphics.Clear(Color.FromArgb(0, 0, 0, 0));
+                    graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+                    graphics.PixelOffsetMode = PixelOffsetMode.Half;
+                    for (var i = 0; i < bitmaps.Count; i++)
+                    {
+                        var x = (i % columns) * frameWidth;
+                        var y = (i / columns) * frameHeight;
+                        graphics.DrawImage(bitmaps[i], x, y, bitmaps[i].Width, bitmaps[i].Height);
+                    }
+
+                    var folder = Path.GetDirectoryName(outputPath);
+                    if (!String.IsNullOrWhiteSpace(folder) && !Directory.Exists(folder)) Directory.CreateDirectory(folder);
+                    sheet.Save(outputPath, ImageFormat.Png);
+                }
+
+                return new SpriteSheetResult(bitmaps.Count, columns, rows, frameWidth, frameHeight, outputPath);
+            }
+            finally
+            {
+                foreach (var bitmap in bitmaps) bitmap.Dispose();
+            }
+        }
+    }
+
     public static class GreenScreenRemover
     {
         public static Bitmap RemoveGreenScreen(Bitmap source, int tolerance, int softness, int despill)
@@ -162,6 +261,14 @@ namespace VideoToAnimationTool.Core
                 }
             }
             return output;
+        }
+
+        public static Bitmap RemoveSmartMatteBackground(Bitmap source, int tolerance, int softness, int despill, int edgeCleanup)
+        {
+            using (var keyed = RemoveGreenScreen(source, tolerance, softness, despill, edgeCleanup))
+            {
+                return RefineWithConnectedComponents(keyed);
+            }
         }
 
         public static Bitmap RemoveGreenScreen(Bitmap source, int tolerance, int softness)
@@ -306,6 +413,77 @@ namespace VideoToAnimationTool.Core
             }
             return count;
         }
+
+        private static Bitmap RefineWithConnectedComponents(Bitmap source)
+        {
+            var width = source.Width;
+            var height = source.Height;
+            var output = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            var visited = new bool[width, height];
+            var minComponentSize = Math.Max(24, (width * height) / 6000);
+
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    if (visited[x, y]) continue;
+                    var pixel = source.GetPixel(x, y);
+                    if (pixel.A <= 18)
+                    {
+                        visited[x, y] = true;
+                        output.SetPixel(x, y, Color.FromArgb(0, pixel.R, pixel.G, pixel.B));
+                        continue;
+                    }
+
+                    var component = FloodComponent(source, visited, x, y);
+                    var touchesBorder = false;
+                    foreach (var point in component)
+                    {
+                        if (point.X <= 0 || point.Y <= 0 || point.X >= width - 1 || point.Y >= height - 1) { touchesBorder = true; break; }
+                    }
+
+                    var keep = component.Count >= minComponentSize || !touchesBorder;
+                    foreach (var point in component)
+                    {
+                        var color = source.GetPixel(point.X, point.Y);
+                        if (keep) output.SetPixel(point.X, point.Y, color);
+                        else output.SetPixel(point.X, point.Y, Color.FromArgb(0, color.R, color.G, color.B));
+                    }
+                }
+            }
+
+            return output;
+        }
+
+        private static List<Point> FloodComponent(Bitmap source, bool[,] visited, int startX, int startY)
+        {
+            var width = source.Width;
+            var height = source.Height;
+            var result = new List<Point>();
+            var queue = new Queue<Point>();
+            visited[startX, startY] = true;
+            queue.Enqueue(new Point(startX, startY));
+
+            while (queue.Count > 0)
+            {
+                var point = queue.Dequeue();
+                result.Add(point);
+                AddNeighbor(source, visited, queue, point.X - 1, point.Y, width, height);
+                AddNeighbor(source, visited, queue, point.X + 1, point.Y, width, height);
+                AddNeighbor(source, visited, queue, point.X, point.Y - 1, width, height);
+                AddNeighbor(source, visited, queue, point.X, point.Y + 1, width, height);
+            }
+
+            return result;
+        }
+
+        private static void AddNeighbor(Bitmap source, bool[,] visited, Queue<Point> queue, int x, int y, int width, int height)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height || visited[x, y]) return;
+            if (source.GetPixel(x, y).A <= 18) return;
+            visited[x, y] = true;
+            queue.Enqueue(new Point(x, y));
+        }
     }
 
     public static class WatermarkRemover
@@ -323,44 +501,17 @@ namespace VideoToAnimationTool.Core
                 path.AddPolygon(polygon);
                 var bounds = Rectangle.Round(path.GetBounds());
                 bounds.Intersect(new Rectangle(0, 0, source.Width, source.Height));
-                var fill = SampleBorderColor(source, path, bounds);
 
                 for (var y = bounds.Top; y < bounds.Bottom; y++)
                 {
                     for (var x = bounds.Left; x < bounds.Right; x++)
                     {
-                        if (path.IsVisible(x + 0.5f, y + 0.5f)) output.SetPixel(x, y, fill);
+                        if (path.IsVisible(x + 0.5f, y + 0.5f)) output.SetPixel(x, y, Color.FromArgb(0, 0, 0, 0));
                     }
                 }
             }
 
             return output;
-        }
-
-        private static Color SampleBorderColor(Bitmap source, GraphicsPath path, Rectangle bounds)
-        {
-            long a = 0, r = 0, g = 0, b = 0, count = 0;
-            var sampleBounds = Rectangle.Inflate(bounds, 10, 10);
-            sampleBounds.Intersect(new Rectangle(0, 0, source.Width, source.Height));
-
-            for (var y = sampleBounds.Top; y < sampleBounds.Bottom; y++)
-            {
-                for (var x = sampleBounds.Left; x < sampleBounds.Right; x++)
-                {
-                    if (path.IsVisible(x + 0.5f, y + 0.5f)) continue;
-                    var near = x >= bounds.Left - 6 && x <= bounds.Right + 6 && y >= bounds.Top - 6 && y <= bounds.Bottom + 6;
-                    if (!near) continue;
-                    var pixel = source.GetPixel(x, y);
-                    a += pixel.A;
-                    r += pixel.R;
-                    g += pixel.G;
-                    b += pixel.B;
-                    count++;
-                }
-            }
-
-            if (count == 0) return Color.FromArgb(0, 0, 0, 0);
-            return Color.FromArgb((int)(a / count), (int)(r / count), (int)(g / count), (int)(b / count));
         }
     }
 }
