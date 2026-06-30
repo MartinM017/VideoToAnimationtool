@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -60,7 +61,7 @@ namespace VideoToAnimationTool.Desktop
         private readonly ComboBox backgroundEngineComboBox = new ComboBox();
         private readonly ComboBox presetComboBox = new ComboBox();
         private readonly Button loadPresetButton = new Button { Content = "Load" };
-        private readonly Button savePresetButton = new Button { Content = "Save New" };
+        private readonly Button savePresetButton = new Button { Content = "Save" };
         private readonly Button updatePresetButton = new Button { Content = "Update" };
         private readonly Button deletePresetButton = new Button { Content = "Delete" };
         private readonly List<BackgroundPreset> presets = new List<BackgroundPreset>();
@@ -77,14 +78,14 @@ namespace VideoToAnimationTool.Desktop
         private readonly ListBox frameListBox = new ListBox();
         private readonly ListBox excludedFrameListBox = new ListBox();
         private readonly Button exportButton = new Button { Content = "Generate Frames" };
-        private readonly Button cancelButton = new Button { Content = "Cancel", IsEnabled = false };
-        private readonly Button removeSelectedButton = new Button { Content = "Remove Selected" };
-        private readonly Button removeAllButton = new Button { Content = "Apply All Frames" };
-        private readonly Button undoButton = new Button { Content = "Undo Last", IsEnabled = false };
+        private readonly Button cancelButton = new Button { Content = "Cancel", IsEnabled = false, Visibility = Visibility.Collapsed };
+        private readonly Button removeSelectedButton = new Button { Content = "Test Frame" };
+        private readonly Button removeAllButton = new Button { Content = "Apply All" };
+        private readonly Button undoButton = new Button { Content = "Undo", IsEnabled = false };
         private readonly Button lassoModeButton = new Button { Content = "Start Lasso" };
         private readonly Button clearLassoButton = new Button { Content = "Clear Lasso" };
-        private readonly Button removeWatermarkSelectedButton = new Button { Content = "Remove Selected" };
-        private readonly Button removeWatermarkAllButton = new Button { Content = "Apply All Frames" };
+        private readonly Button removeWatermarkSelectedButton = new Button { Content = "Remove" };
+        private readonly Button removeWatermarkAllButton = new Button { Content = "Apply All" };
         private readonly Button playButton = new Button { Content = "Play" };
         private readonly Button exportSpriteSheetButton = new Button { Content = "Export Sheet" };
         private readonly CheckBox loopCheckBox = new CheckBox { Content = "Loop", IsChecked = true };
@@ -101,54 +102,78 @@ namespace VideoToAnimationTool.Desktop
 
         public MainWindow()
         {
-            Title = "AI Character Animation Frame Tool";
-            Width = 1280;
-            Height = 820;
-            MinWidth = 980;
-            MinHeight = 680;
+            Title = "Video to Animation Tool";
+            Width = 1480;
+            Height = 900;
+            MinWidth = 1120;
+            MinHeight = 720;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             InstallDarkTheme();
             formatComboBox.Items.Add("png");
             formatComboBox.Items.Add("jpg");
             formatComboBox.SelectedIndex = 0;
-            formatComboBox.Foreground = Brushes.Black;
-            formatComboBox.Background = Brushes.White;
+            formatComboBox.Foreground = BrushFrom(226, 232, 240);
+            formatComboBox.Background = BrushFrom(18, 27, 37);
             backgroundEngineComboBox.Items.Add("Auto Color Key");
             backgroundEngineComboBox.Items.Add("Smart Matte");
-            backgroundEngineComboBox.Items.Add("OpenCV GrabCut");
             backgroundEngineComboBox.SelectedIndex = 0;
-            backgroundEngineComboBox.Foreground = Brushes.Black;
-            backgroundEngineComboBox.Background = Brushes.White;
+            backgroundEngineComboBox.Foreground = BrushFrom(226, 232, 240);
+            backgroundEngineComboBox.Background = BrushFrom(18, 27, 37);
             Content = BuildLayout();
+            ApplyModernButtonRoles();
             WireEvents();
             LoadPresets();
             UpdateNamePreview();
             AddLog("Ready. Generate frames or load an image, select a thumbnail, then remove the background or watermark.");
         }
 
+        private void ApplyModernButtonRoles()
+        {
+            ApplyPrimaryButton(exportButton);
+            ApplyPrimaryButton(removeAllButton);
+            ApplyPrimaryButton(removeWatermarkAllButton);
+            ApplyPrimaryButton(exportSpriteSheetButton);
+            ApplyAccentButton(playButton);
+            ApplySecondaryButton(cancelButton);
+            ApplySecondaryButton(removeSelectedButton);
+            ApplySecondaryButton(removeWatermarkSelectedButton);
+            ApplySecondaryButton(undoButton);
+            ApplySecondaryButton(lassoModeButton);
+            ApplySecondaryButton(clearLassoButton);
+            ApplySecondaryButton(loadPresetButton);
+            ApplySecondaryButton(savePresetButton);
+            ApplySecondaryButton(updatePresetButton);
+            ApplySecondaryButton(deletePresetButton);
+        }
+
         private void InstallDarkTheme()
         {
-            Background = BrushFrom(11, 18, 32);
+            Background = BrushFrom(9, 14, 20);
             FontFamily = new FontFamily("Segoe UI");
             FontSize = 13;
             Resources[typeof(TextBlock)] = StyleForTextBlock();
             Resources[typeof(TextBox)] = StyleForTextBox();
             Resources[typeof(Button)] = StyleForButton();
+            Resources[typeof(ComboBox)] = StyleForComboBox();
             Resources[typeof(CheckBox)] = StyleForCheckBox();
             Resources[typeof(ProgressBar)] = StyleForProgressBar();
+            Resources[typeof(ComboBoxItem)] = StyleForComboBoxItem();
+            Resources[typeof(Slider)] = StyleForSlider();
         }
 
         private UIElement BuildLayout()
         {
-            var root = new Grid { Margin = new Thickness(12), Background = BrushFrom(11, 18, 32) };
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(560), MinWidth = 360 });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var root = new Grid { Margin = new Thickness(0), Background = BrushFrom(9, 14, 20) };
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(392), MinWidth = 350 });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 390 });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(310), MinWidth = 260 });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(6) });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(150), MinHeight = 90 });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(158), MinHeight = 110 });
 
-            var left = new ScrollViewer { Content = BuildLeftPanel(), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = BrushFrom(11, 18, 32) };
+            var left = new ScrollViewer { Content = BuildLeftPanel(), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = BrushFrom(9, 14, 20), Margin = new Thickness(14, 14, 0, 0) };
             Grid.SetColumn(left, 0);
             Grid.SetRow(left, 0);
             root.Children.Add(left);
@@ -161,25 +186,38 @@ namespace VideoToAnimationTool.Desktop
             var preview = BuildPreviewPanel();
             Grid.SetColumn(preview, 2);
             Grid.SetRow(preview, 0);
+            preview.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 14, 0, 0));
             root.Children.Add(preview);
+
+            var rightSplitter = NewGridSplitter(Orientation.Vertical);
+            Grid.SetColumn(rightSplitter, 3);
+            Grid.SetRow(rightSplitter, 0);
+            root.Children.Add(rightSplitter);
+
+            var right = BuildRightPanel();
+            Grid.SetColumn(right, 4);
+            Grid.SetRow(right, 0);
+            right.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 14, 14, 0));
+            root.Children.Add(right);
 
             var rowSplitter = NewGridSplitter(Orientation.Horizontal);
             Grid.SetColumn(rowSplitter, 0);
-            Grid.SetColumnSpan(rowSplitter, 3);
+            Grid.SetColumnSpan(rowSplitter, 5);
             Grid.SetRow(rowSplitter, 1);
             root.Children.Add(rowSplitter);
 
             var log = BuildLogPanel();
             Grid.SetColumn(log, 0);
-            Grid.SetColumnSpan(log, 3);
+            Grid.SetColumnSpan(log, 5);
             Grid.SetRow(log, 2);
+            log.SetValue(FrameworkElement.MarginProperty, new Thickness(14, 0, 14, 14));
             root.Children.Add(log);
             return root;
         }
 
         private UIElement BuildLeftPanel()
         {
-            var panel = new StackPanel { Background = BrushFrom(11, 18, 32) };
+            var panel = new StackPanel { Background = BrushFrom(9, 14, 20) };
             panel.Children.Add(BuildSourceGroup());
             panel.Children.Add(BuildImageGroup());
             panel.Children.Add(BuildExportGroup());
@@ -191,7 +229,7 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildSourceGroup()
         {
-            var card = NewCard("1. Source Video", 96);
+            var card = NewCard("1|Source", Double.NaN);
             var grid = NewTwoColumnGrid();
             AddPathRow(grid, 0, videoPathTextBox, "Browse", BrowseVideo);
             AddFullRow(grid, 1, metadataText);
@@ -201,7 +239,7 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildImageGroup()
         {
-            var card = NewCard("1B. Single Image", 96);
+            var card = NewCard("1|Single Image", Double.NaN);
             var grid = NewTwoColumnGrid();
             AddPathRow(grid, 0, imagePathTextBox, "Browse", BrowseImage);
             AddFullRow(grid, 1, new TextBlock { Text = "Load one PNG/JPG for background or watermark removal.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
@@ -211,10 +249,10 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildExportGroup()
         {
-            var card = NewCard("2. Sequence Frame Generation", 370);
+            var card = NewCard("2|Sequence Frame Generation", Double.NaN);
             var grid = NewFormGrid(9);
-            AddLabeledControl(grid, 0, "Character", characterTextBox);
-            AddLabeledControl(grid, 1, "Action", actionTextBox);
+            AddLabeledControl(grid, 0, "Subject", characterTextBox);
+            AddLabeledControl(grid, 1, "Motion", actionTextBox);
             AddLabeledPathRow(grid, 2, "Output Folder", outputFolderTextBox, "Browse", BrowseOutputFolder);
             AddLabeledControl(grid, 3, "Start Seconds", startSecondsBox);
             AddLabeledControl(grid, 4, "End Seconds", endSecondsBox);
@@ -236,7 +274,7 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildFrameFolderGroup()
         {
-            var card = NewCard("3. Frame Folder", 92);
+            var card = NewCard("3|Frame Folder", Double.NaN);
             var grid = NewTwoColumnGrid();
             AddPathRow(grid, 0, frameFolderTextBox, "Load", BrowseFrameFolder);
             SetCardContent(card, grid);
@@ -245,7 +283,7 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildGreenScreenGroup()
         {
-            var card = NewCard("4. Background Removal", 500);
+            var card = NewCard("4|Background Removal", Double.NaN);
             var grid = NewFormGrid(11);
             grid.RowDefinitions[0].Height = new GridLength(36);
             grid.RowDefinitions[1].Height = new GridLength(46);
@@ -265,13 +303,10 @@ namespace VideoToAnimationTool.Desktop
             buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
             buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
-            buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(118) });
+            buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             removeSelectedButton.Height = 34;
-            removeSelectedButton.MinWidth = 124;
             removeAllButton.Height = 34;
-            removeAllButton.MinWidth = 124;
             undoButton.Height = 34;
-            undoButton.MinWidth = 96;
             Grid.SetColumn(removeSelectedButton, 0);
             Grid.SetColumn(removeAllButton, 2);
             Grid.SetColumn(undoButton, 4);
@@ -286,7 +321,7 @@ namespace VideoToAnimationTool.Desktop
 
         private UIElement BuildWatermarkGroup()
         {
-            var card = NewCard("5. Watermark Removal", 230);
+            var card = NewCard("5|Watermark Removal", Double.NaN);
             var grid = NewFormGrid(4);
             grid.RowDefinitions[0].Height = GridLength.Auto;
             grid.RowDefinitions[1].Height = new GridLength(54);
@@ -318,7 +353,7 @@ namespace VideoToAnimationTool.Desktop
             row2.Children.Add(removeWatermarkAllButton);
             AddFullRow(grid, 2, row2);
 
-            AddFullRow(grid, 3, new TextBlock { Text = "Output: current frame folder\\watermark_removed. Use Undo Last if the cutout is not right.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
+            AddFullRow(grid, 3, new TextBlock { Text = "Output: current frame folder\\watermark_removed. Use Undo if the cutout is not right.", Foreground = BrushFrom(203, 213, 225), TextWrapping = TextWrapping.Wrap });
             SetCardContent(card, grid);
             return card;
         }
@@ -328,9 +363,6 @@ namespace VideoToAnimationTool.Desktop
             var card = NewCard("Animation Preview", Double.NaN);
             var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 180 });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(6) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(118), MinHeight = 76 });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(86), MinHeight = 58 });
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) });
 
             previewCanvas.Background = Brushes.Transparent;
@@ -339,30 +371,20 @@ namespace VideoToAnimationTool.Desktop
             lassoLine.Stroke = BrushFrom(34, 211, 238);
             lassoLine.Fill = new SolidColorBrush(Color.FromArgb(34, 34, 211, 238));
             previewCanvas.SizeChanged += delegate { ResizePreviewImage(); };
-            var border = new Border { Background = BrushFrom(2, 6, 23), BorderBrush = BrushFrom(51, 65, 85), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = previewCanvas, Padding = new Thickness(8) };
+            var border = new Border { Background = BrushFrom(4, 9, 15), BorderBrush = BrushFrom(43, 56, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = previewCanvas, Padding = new Thickness(8) };
             Grid.SetRow(border, 0);
             grid.Children.Add(border);
 
-            ConfigureFrameListBox(frameListBox, "Drag frames down to remove them from playback.");
-            ConfigureFrameListBox(excludedFrameListBox, "Drop removed frames here. Drag them back up to restore playback.");
-            var previewSplitter = NewGridSplitter(Orientation.Horizontal);
-            Grid.SetRow(previewSplitter, 1);
-            grid.Children.Add(previewSplitter);
-
-            var playbackPanel = BuildFrameListPanel("Playback Frames", frameListBox);
-            Grid.SetRow(playbackPanel, 2);
-            grid.Children.Add(playbackPanel);
-
-            var removedPanel = BuildFrameListPanel("Removed From Playback", excludedFrameListBox);
-            Grid.SetRow(removedPanel, 3);
-            grid.Children.Add(removedPanel);
-
-            var controls = new StackPanel { Orientation = Orientation.Horizontal };
-            playButton.Width = 76;
+            var controls = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+            playButton.Width = 72;
+            playButton.Height = 34;
             controls.Children.Add(playButton);
-            exportSpriteSheetButton.Width = 118;
-            exportSpriteSheetButton.Margin = new Thickness(10, 0, 0, 0);
-            controls.Children.Add(exportSpriteSheetButton);
+            var previousButton = new Button { Content = "Prev", Width = 70, Height = 32, Margin = new Thickness(10, 0, 0, 0) };
+            previousButton.Click += delegate { PreviousFrame(); };
+            controls.Children.Add(previousButton);
+            var nextButton = new Button { Content = "Next", Width = 70, Height = 32, Margin = new Thickness(8, 0, 0, 0) };
+            nextButton.Click += delegate { NextFrame(); };
+            controls.Children.Add(nextButton);
             controls.Children.Add(new TextBlock { Text = "Preview FPS", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 8, 0), Foreground = BrushFrom(203, 213, 225) });
             previewFpsBox.Width = 70;
             controls.Children.Add(previewFpsBox);
@@ -370,15 +392,48 @@ namespace VideoToAnimationTool.Desktop
             controls.Children.Add(loopCheckBox);
             frameCounterText.Margin = new Thickness(24, 6, 0, 0);
             controls.Children.Add(frameCounterText);
-            Grid.SetRow(controls, 4);
+            Grid.SetRow(controls, 1);
             grid.Children.Add(controls);
+            SetCardContent(card, grid);
+            return card;
+        }
+
+        private UIElement BuildRightPanel()
+        {
+            ConfigureFrameListBox(frameListBox, "Drag frames down to remove them from playback.");
+            ConfigureFrameListBox(excludedFrameListBox, "Drop removed frames here. Drag them back up to restore playback.");
+
+            var card = NewCard("Frames", Double.NaN);
+            var grid = new Grid();
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 120 });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.78, GridUnitType.Star), MinHeight = 96 });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
+
+            var playbackPanel = BuildFrameListPanel("Playback Frames", frameListBox);
+            Grid.SetRow(playbackPanel, 0);
+            grid.Children.Add(playbackPanel);
+
+            var listSplitter = NewGridSplitter(Orientation.Horizontal);
+            Grid.SetRow(listSplitter, 1);
+            grid.Children.Add(listSplitter);
+
+            var removedPanel = BuildFrameListPanel("Removed From Playback", excludedFrameListBox);
+            Grid.SetRow(removedPanel, 2);
+            grid.Children.Add(removedPanel);
+
+            exportSpriteSheetButton.Height = 34;
+            exportSpriteSheetButton.Margin = new Thickness(0, 12, 0, 0);
+            Grid.SetRow(exportSpriteSheetButton, 3);
+            grid.Children.Add(exportSpriteSheetButton);
+
             SetCardContent(card, grid);
             return card;
         }
 
         private UIElement BuildLogPanel()
         {
-            var grid = new Grid { Background = BrushFrom(11, 18, 32) };
+            var grid = new Grid { Background = BrushFrom(15, 23, 32) };
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(18) });
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) });
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -391,9 +446,9 @@ namespace VideoToAnimationTool.Desktop
             logTextBox.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
             logTextBox.IsReadOnly = true;
             logTextBox.FontFamily = new FontFamily("Consolas");
-            logTextBox.Background = BrushFrom(2, 6, 23);
+            logTextBox.Background = BrushFrom(7, 13, 20);
             logTextBox.Foreground = BrushFrom(203, 213, 225);
-            logTextBox.BorderBrush = BrushFrom(51, 65, 85);
+            logTextBox.BorderBrush = BrushFrom(43, 56, 70);
             Grid.SetRow(logTextBox, 2);
             grid.Children.Add(logTextBox);
             return grid;
@@ -414,9 +469,9 @@ namespace VideoToAnimationTool.Desktop
 
         private void ConfigureFrameListBox(ListBox listBox, string tooltip)
         {
-            listBox.Background = BrushFrom(15, 23, 42);
+            listBox.Background = BrushFrom(13, 20, 29);
             listBox.Foreground = BrushFrom(226, 232, 240);
-            listBox.BorderBrush = BrushFrom(51, 65, 85);
+            listBox.BorderBrush = BrushFrom(43, 56, 70);
             listBox.Margin = new Thickness(0, 0, 0, 0);
             listBox.AllowDrop = true;
             listBox.ToolTip = tooltip;
@@ -499,6 +554,7 @@ namespace VideoToAnimationTool.Desktop
             var startInfo = new ProcessStartInfo { FileName = ffmpeg, Arguments = FfmpegHelper.ToArgumentString(args), UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             exportButton.IsEnabled = false;
             cancelButton.IsEnabled = true;
+            cancelButton.Visibility = Visibility.Visible;
             progressBar.IsIndeterminate = true;
             SetStatus("Frame export started.");
             exportProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
@@ -511,6 +567,7 @@ namespace VideoToAnimationTool.Desktop
             progressBar.IsIndeterminate = false;
             exportButton.IsEnabled = true;
             cancelButton.IsEnabled = false;
+            cancelButton.Visibility = Visibility.Collapsed;
             if (exitCode == 0) { SetStatus("Frame export finished."); LoadFrameFolder(outputFolderTextBox.Text); }
             else SetStatus("Export failed with exit code " + exitCode + ".");
         }
@@ -532,7 +589,6 @@ namespace VideoToAnimationTool.Desktop
             var colorDespill = colorDespillBox.GetInt(DefaultColorDespill);
             var edgeCleanup = edgeCleanupBox.GetInt(DefaultEdgeCleanup);
             var useSmartMatte = IsSmartMatteSelected();
-            var useOpenCvGrabCut = IsOpenCvGrabCutSelected();
 
             try
             {
@@ -541,7 +597,7 @@ namespace VideoToAnimationTool.Desktop
                 {
                     if (!Directory.Exists(outputFolder)) Directory.CreateDirectory(outputFolder);
                     var undo = CaptureUndo(outputFolder, new[] { outputPath }, inputFolder, sourcePath);
-                    ProcessOneFrame(sourcePath, outputPath, tolerance, softness, colorDespill, edgeCleanup, useSmartMatte, useOpenCvGrabCut);
+                    ProcessOneFrame(sourcePath, outputPath, tolerance, softness, colorDespill, edgeCleanup, useSmartMatte);
                     Dispatcher.Invoke(delegate { undoStack.Push(undo); undoButton.IsEnabled = true; });
                 });
                 SetBusyForChroma(false, "Selected frame background removal finished. Preview is showing the processed frame.");
@@ -577,7 +633,6 @@ namespace VideoToAnimationTool.Desktop
             var colorDespill = colorDespillBox.GetInt(DefaultColorDespill);
             var edgeCleanup = edgeCleanupBox.GetInt(DefaultEdgeCleanup);
             var useSmartMatte = IsSmartMatteSelected();
-            var useOpenCvGrabCut = IsOpenCvGrabCutSelected();
 
             try
             {
@@ -590,7 +645,7 @@ namespace VideoToAnimationTool.Desktop
                     var undo = CaptureUndo(outputFolder, outputPaths.ToArray(), inputFolder, null);
                     for (var i = 0; i < sourceFrames.Length; i++)
                     {
-                        ProcessOneFrame(sourceFrames[i], outputPaths[i], tolerance, softness, colorDespill, edgeCleanup, useSmartMatte, useOpenCvGrabCut);
+                        ProcessOneFrame(sourceFrames[i], outputPaths[i], tolerance, softness, colorDespill, edgeCleanup, useSmartMatte);
                         var done = i + 1;
                         var total = sourceFrames.Length;
                         Dispatcher.Invoke(delegate { SetStatus("Background removal " + done + " / " + total); });
@@ -875,19 +930,8 @@ namespace VideoToAnimationTool.Desktop
             return backgroundEngineComboBox.SelectedItem != null && Convert.ToString(backgroundEngineComboBox.SelectedItem, CultureInfo.InvariantCulture).IndexOf("Smart", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private bool IsOpenCvGrabCutSelected()
+        private void ProcessOneFrame(string sourcePath, string outputPath, int tolerance, int softness, int colorDespill, int edgeCleanup, bool useSmartMatte)
         {
-            return backgroundEngineComboBox.SelectedItem != null && Convert.ToString(backgroundEngineComboBox.SelectedItem, CultureInfo.InvariantCulture).IndexOf("OpenCV", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private void ProcessOneFrame(string sourcePath, string outputPath, int tolerance, int softness, int colorDespill, int edgeCleanup, bool useSmartMatte, bool useOpenCvGrabCut)
-        {
-            if (useOpenCvGrabCut)
-            {
-                ProcessOneFrameWithOpenCvGrabCut(sourcePath, outputPath, tolerance, softness, colorDespill, edgeCleanup);
-                return;
-            }
-
             System.Drawing.Bitmap cutout;
             using (var source = new System.Drawing.Bitmap(sourcePath))
             {
@@ -896,89 +940,6 @@ namespace VideoToAnimationTool.Desktop
                     : GreenScreenRemover.RemoveGreenScreen(source, tolerance, softness, colorDespill, edgeCleanup);
             }
             using (cutout) cutout.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
-        }
-
-        private void ProcessOneFrameWithOpenCvGrabCut(string sourcePath, string outputPath)
-        {
-            ProcessOneFrameWithOpenCvGrabCut(sourcePath, outputPath, DefaultTolerance, DefaultSoftness, DefaultColorDespill, DefaultEdgeCleanup);
-        }
-
-        private void ProcessOneFrameWithOpenCvGrabCut(string sourcePath, string outputPath, int tolerance, int softness, int colorDespill, int edgeCleanup)
-        {
-            var helper = FindOpenCvGrabCutHelper();
-            if (String.IsNullOrWhiteSpace(helper))
-            {
-                throw new FileNotFoundException("OpenCV GrabCut helper was not found. Build it by running tools\\build-opencv-grabcut-helper.bat from an x64 Native Tools Command Prompt for VS 2022.");
-            }
-
-            var outputFolder = Path.GetDirectoryName(outputPath);
-            if (!Directory.Exists(outputFolder)) Directory.CreateDirectory(outputFolder);
-            var maskPath = Path.Combine(Path.GetTempPath(), "vta-opencv-mask-" + Guid.NewGuid().ToString("N") + ".png");
-            try
-            {
-                SaveInitialAlphaMask(sourcePath, maskPath, tolerance, softness, colorDespill, edgeCleanup);
-                RunOpenCvGrabCutHelper(helper, sourcePath, outputPath, maskPath);
-            }
-            finally
-            {
-                if (File.Exists(maskPath)) File.Delete(maskPath);
-            }
-        }
-
-        private void RunOpenCvGrabCutHelper(string helper, string sourcePath, string outputPath, string maskPath)
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = helper,
-                Arguments = FfmpegHelper.ToArgumentString(new[] { sourcePath, outputPath, "5", maskPath }),
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            var toolFolder = Path.GetDirectoryName(helper);
-            var opencvBin = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "opencv", "build", "x64", "vc16", "bin");
-            startInfo.EnvironmentVariables["PATH"] = toolFolder + Path.PathSeparator + opencvBin + Path.PathSeparator + (startInfo.EnvironmentVariables["PATH"] ?? String.Empty);
-
-            using (var process = Process.Start(startInfo))
-            {
-                var stdout = process.StandardOutput.ReadToEnd();
-                var stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                {
-                    throw new InvalidOperationException("OpenCV GrabCut failed with exit code " + process.ExitCode + "." + Environment.NewLine + stdout + Environment.NewLine + stderr);
-                }
-            }
-        }
-
-        private void SaveInitialAlphaMask(string sourcePath, string maskPath, int tolerance, int softness, int colorDespill, int edgeCleanup)
-        {
-            using (var source = new System.Drawing.Bitmap(sourcePath))
-            using (var keyed = GreenScreenRemover.RemoveGreenScreen(source, tolerance, softness, colorDespill, edgeCleanup))
-            using (var mask = new System.Drawing.Bitmap(keyed.Width, keyed.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
-            {
-                for (var y = 0; y < keyed.Height; y++)
-                {
-                    for (var x = 0; x < keyed.Width; x++)
-                    {
-                        var alpha = keyed.GetPixel(x, y).A;
-                        mask.SetPixel(x, y, System.Drawing.Color.FromArgb(255, alpha, alpha, alpha));
-                    }
-                }
-                mask.Save(maskPath, System.Drawing.Imaging.ImageFormat.Png);
-            }
-        }
-
-        private string FindOpenCvGrabCutHelper()
-        {
-            var candidates = new[]
-            {
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tools", "opencv-grabcut-helper.exe"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "opencv-grabcut-helper.exe")
-            };
-            foreach (var candidate in candidates) if (File.Exists(candidate)) return candidate;
-            return null;
         }
 
         private void ProcessWatermarkFrame(string sourcePath, string outputPath, System.Drawing.PointF[] polygon)
@@ -1153,15 +1114,22 @@ namespace VideoToAnimationTool.Desktop
         private ListBoxItem CreateFrameListItem(string path, int index, bool active)
         {
             var stack = new StackPanel { Width = active ? 96 : 84, Margin = new Thickness(4) };
-            stack.Children.Add(new Image { Source = LoadBitmapImage(path, active ? 86 : 72), Width = active ? 86 : 72, Height = active ? 68 : 48, Stretch = Stretch.Uniform });
-            stack.Children.Add(new TextBlock { Text = Path.GetFileName(path), TextAlignment = TextAlignment.Center, FontSize = 10, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = BrushFrom(203, 213, 225) });
+            stack.Children.Add(new Border
+            {
+                Background = BrushFrom(7, 13, 20),
+                BorderBrush = BrushFrom(43, 56, 70),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Child = new Image { Source = LoadBitmapImage(path, active ? 86 : 72), Width = active ? 86 : 72, Height = active ? 68 : 48, Stretch = Stretch.Uniform }
+            });
+            stack.Children.Add(new TextBlock { Text = Path.GetFileName(path), TextAlignment = TextAlignment.Center, FontSize = 10, Margin = new Thickness(0, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Foreground = BrushFrom(203, 213, 225) });
             return new ListBoxItem
             {
                 Content = stack,
                 Tag = path,
-                Background = active ? BrushFrom(15, 23, 42) : BrushFrom(30, 41, 59),
+                Background = active ? BrushFrom(17, 26, 36) : BrushFrom(21, 31, 43),
                 Foreground = BrushFrom(226, 232, 240),
-                BorderBrush = BrushFrom(51, 65, 85),
+                BorderBrush = BrushFrom(43, 56, 70),
                 Padding = new Thickness(3),
                 ToolTip = (active ? "Playback frame " : "Removed frame ") + (index + 1) + ": " + path
             };
@@ -1337,6 +1305,24 @@ namespace VideoToAnimationTool.Desktop
         }
 
         private void StopPreview() { previewTimer.Stop(); playButton.Content = "Play"; }
+
+        private void PreviousFrame()
+        {
+            StopPreview();
+            if (frames.Length == 0) return;
+            currentFrameIndex = Math.Max(0, currentFrameIndex - 1);
+            frameListBox.SelectedIndex = currentFrameIndex;
+            ShowCurrentFrame();
+        }
+
+        private void NextFrame()
+        {
+            StopPreview();
+            if (frames.Length == 0) return;
+            currentFrameIndex = Math.Min(frames.Length - 1, currentFrameIndex + 1);
+            frameListBox.SelectedIndex = currentFrameIndex;
+            ShowCurrentFrame();
+        }
 
         private void AdvancePreview()
         {
@@ -1571,13 +1557,53 @@ namespace VideoToAnimationTool.Desktop
             var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = Double.IsNaN(height) ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
-            var titleBlock = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 0, 0, 10), Foreground = BrushFrom(241, 245, 249) };
-            Grid.SetRow(titleBlock, 0);
-            grid.Children.Add(titleBlock);
-            var card = new Border { Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(14), Background = BrushFrom(17, 24, 39), BorderBrush = BrushFrom(30, 41, 59), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
+            var header = BuildCardHeader(title);
+            Grid.SetRow(header, 0);
+            grid.Children.Add(header);
+            var card = new Border { Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(14), Background = BrushFrom(15, 23, 32), BorderBrush = BrushFrom(43, 56, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
             if (!Double.IsNaN(height)) card.MinHeight = height;
             else { card.VerticalAlignment = VerticalAlignment.Stretch; card.Height = Double.NaN; }
             return card;
+        }
+
+        private static UIElement BuildCardHeader(string title)
+        {
+            var parts = title.Split(new[] { '|' }, 2);
+            var hasBadge = parts.Length == 2;
+            var header = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = hasBadge ? GridLength.Auto : new GridLength(0) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            if (hasBadge)
+            {
+                var badge = new Border
+                {
+                    Width = 22,
+                    Height = 22,
+                    CornerRadius = new CornerRadius(11),
+                    Background = BrushFrom(20, 184, 166),
+                    Child = new TextBlock { Text = parts[0], FontSize = 11, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.White }
+                };
+                Grid.SetColumn(badge, 0);
+                header.Children.Add(badge);
+            }
+
+            var label = new TextBlock
+            {
+                Text = hasBadge ? parts[1] : title,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 13,
+                Margin = hasBadge ? new Thickness(10, 1, 0, 0) : new Thickness(0, 1, 0, 0),
+                Foreground = BrushFrom(244, 247, 250)
+            };
+            Grid.SetColumn(label, 1);
+            header.Children.Add(label);
+
+            var chevron = new TextBlock { Text = "^", FontSize = 12, Foreground = BrushFrom(148, 163, 184), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(chevron, 2);
+            header.Children.Add(chevron);
+            return header;
         }
 
         private static void SetCardContent(Border card, UIElement content)
@@ -1591,9 +1617,9 @@ namespace VideoToAnimationTool.Desktop
         {
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(36) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             return grid;
         }
 
@@ -1602,7 +1628,7 @@ namespace VideoToAnimationTool.Desktop
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(118) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (var i = 0; i < rows + 2; i++) grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
+            for (var i = 0; i < rows + 2; i++) grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(36) });
             return grid;
         }
 
@@ -1612,7 +1638,7 @@ namespace VideoToAnimationTool.Desktop
             Grid.SetRow(textBox, row);
             Grid.SetColumn(textBox, 0);
             grid.Children.Add(textBox);
-            grid.Children.Add(NewButton(buttonText, click, 76, row, 1));
+            grid.Children.Add(NewButton(buttonText, click, 82, row, 1));
         }
 
         private static void AddLabeledPathRow(Grid grid, int row, string label, TextBox textBox, string buttonText, Action click)
@@ -1623,11 +1649,11 @@ namespace VideoToAnimationTool.Desktop
             grid.Children.Add(text);
             var inner = new Grid();
             inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
+            inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
             textBox.Margin = new Thickness(0, 2, 8, 2);
             Grid.SetColumn(textBox, 0);
             inner.Children.Add(textBox);
-            inner.Children.Add(NewButton(buttonText, click, 76, 0, 1));
+            inner.Children.Add(NewButton(buttonText, click, 82, 0, 1));
             Grid.SetRow(inner, row);
             Grid.SetColumn(inner, 1);
             grid.Children.Add(inner);
@@ -1683,8 +1709,8 @@ namespace VideoToAnimationTool.Desktop
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
             presetComboBox.Margin = new Thickness(0, 2, 0, 2);
-            presetComboBox.Background = Brushes.White;
-            presetComboBox.Foreground = Brushes.Black;
+            presetComboBox.Background = BrushFrom(18, 27, 37);
+            presetComboBox.Foreground = BrushFrom(226, 232, 240);
             Grid.SetColumn(presetComboBox, 0);
             grid.Children.Add(presetComboBox);
             loadPresetButton.Height = 30;
@@ -1695,12 +1721,12 @@ namespace VideoToAnimationTool.Desktop
 
         private Grid BuildPresetEditButtons()
         {
-            var grid = new Grid { Margin = new Thickness(118, 8, 0, 0) };
+            var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             savePresetButton.Height = 30;
             updatePresetButton.Height = 30;
             deletePresetButton.Height = 30;
@@ -1715,9 +1741,9 @@ namespace VideoToAnimationTool.Desktop
 
         private static void AddFullRow(Grid grid, int row, UIElement element)
         {
-            if (row >= grid.RowDefinitions.Count) grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
+            if (row >= grid.RowDefinitions.Count) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var frameworkElement = element as FrameworkElement;
-            if (frameworkElement != null) frameworkElement.VerticalAlignment = VerticalAlignment.Center;
+            if (frameworkElement != null) frameworkElement.VerticalAlignment = VerticalAlignment.Top;
             Grid.SetRow(element, row);
             Grid.SetColumn(element, 0);
             Grid.SetColumnSpan(element, Math.Max(1, grid.ColumnDefinitions.Count));
@@ -1752,7 +1778,7 @@ namespace VideoToAnimationTool.Desktop
         {
             var splitter = new GridSplitter
             {
-                Background = BrushFrom(71, 85, 105),
+                Background = BrushFrom(25, 36, 48),
                 ShowsPreview = true,
                 ResizeBehavior = GridResizeBehavior.PreviousAndNext,
                 ResizeDirection = orientation == Orientation.Vertical ? GridResizeDirection.Columns : GridResizeDirection.Rows
@@ -1776,57 +1802,172 @@ namespace VideoToAnimationTool.Desktop
 
         private static SolidColorBrush BrushFrom(byte red, byte green, byte blue) { var brush = new SolidColorBrush(Color.FromRgb(red, green, blue)); brush.Freeze(); return brush; }
         private static Style StyleForTextBlock() { var style = new Style(typeof(TextBlock)); style.Setters.Add(new Setter(TextBlock.ForegroundProperty, BrushFrom(226, 232, 240))); return style; }
-        private static Style StyleForTextBox() { var style = new Style(typeof(TextBox)); style.Setters.Add(new Setter(Control.BackgroundProperty, BrushFrom(15, 23, 42))); style.Setters.Add(new Setter(Control.ForegroundProperty, BrushFrom(226, 232, 240))); style.Setters.Add(new Setter(Control.BorderBrushProperty, BrushFrom(71, 85, 105))); style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 3, 6, 3))); return style; }
-        private static Style StyleForButton() { var style = new Style(typeof(Button)); style.Setters.Add(new Setter(Control.BackgroundProperty, BrushFrom(37, 99, 235))); style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White)); style.Setters.Add(new Setter(Control.BorderBrushProperty, BrushFrom(29, 78, 216))); style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(9, 4, 9, 4))); style.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold)); style.Setters.Add(new Setter(Control.OpacityProperty, 1.0)); return style; }
+        private static Style StyleForTextBox() { var style = new Style(typeof(TextBox)); style.Setters.Add(new Setter(Control.BackgroundProperty, BrushFrom(18, 27, 37))); style.Setters.Add(new Setter(Control.ForegroundProperty, BrushFrom(226, 232, 240))); style.Setters.Add(new Setter(Control.BorderBrushProperty, BrushFrom(55, 70, 86))); style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(7, 4, 7, 4))); return style; }
+        private static Style StyleForButton()
+        {
+            return (Style)XamlReader.Parse(
+@"<Style xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"" xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"" TargetType=""Button"">
+    <Setter Property=""Background"" Value=""#141E2A""/>
+    <Setter Property=""Foreground"" Value=""#F4F7FA""/>
+    <Setter Property=""BorderBrush"" Value=""#374656""/>
+    <Setter Property=""BorderThickness"" Value=""1""/>
+    <Setter Property=""Padding"" Value=""10,5,10,5""/>
+    <Setter Property=""FontWeight"" Value=""SemiBold""/>
+    <Setter Property=""Template"">
+        <Setter.Value>
+            <ControlTemplate TargetType=""Button"">
+                <Border x:Name=""Root"" Background=""{TemplateBinding Background}"" BorderBrush=""{TemplateBinding BorderBrush}"" BorderThickness=""{TemplateBinding BorderThickness}"" CornerRadius=""0"">
+                    <ContentPresenter HorizontalAlignment=""Center"" VerticalAlignment=""Center"" Margin=""{TemplateBinding Padding}"" RecognizesAccessKey=""True""/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property=""IsMouseOver"" Value=""True"">
+                        <Setter TargetName=""Root"" Property=""Background"" Value=""#1A2836""/>
+                        <Setter TargetName=""Root"" Property=""BorderBrush"" Value=""#53687B""/>
+                    </Trigger>
+                    <Trigger Property=""IsPressed"" Value=""True"">
+                        <Setter TargetName=""Root"" Property=""Background"" Value=""#0F1720""/>
+                    </Trigger>
+                    <Trigger Property=""IsEnabled"" Value=""False"">
+                        <Setter TargetName=""Root"" Property=""Background"" Value=""#101720""/>
+                        <Setter TargetName=""Root"" Property=""BorderBrush"" Value=""#263240""/>
+                        <Setter Property=""Foreground"" Value=""#6C7886""/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>");
+        }
+
+        private static Style StyleForComboBox()
+        {
+            return (Style)XamlReader.Parse(
+@"<Style xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"" xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"" TargetType=""ComboBox"">
+    <Setter Property=""Foreground"" Value=""#E2E8F0""/>
+    <Setter Property=""Background"" Value=""#121B25""/>
+    <Setter Property=""BorderBrush"" Value=""#374656""/>
+    <Setter Property=""BorderThickness"" Value=""1""/>
+    <Setter Property=""Padding"" Value=""8,4,8,4""/>
+    <Setter Property=""ScrollViewer.CanContentScroll"" Value=""True""/>
+    <Setter Property=""Template"">
+        <Setter.Value>
+            <ControlTemplate TargetType=""ComboBox"">
+                <Grid>
+                    <Border x:Name=""Root"" Background=""{TemplateBinding Background}"" BorderBrush=""{TemplateBinding BorderBrush}"" BorderThickness=""{TemplateBinding BorderThickness}""/>
+                    <ContentPresenter x:Name=""ContentSite"" Margin=""8,0,28,0"" VerticalAlignment=""Center"" HorizontalAlignment=""Left"" Content=""{TemplateBinding SelectionBoxItem}"" ContentTemplate=""{TemplateBinding SelectionBoxItemTemplate}"" ContentStringFormat=""{TemplateBinding SelectionBoxItemStringFormat}"" IsHitTestVisible=""False""/>
+                    <Path x:Name=""Arrow"" Data=""M 0 0 L 4 4 L 8 0 Z"" Fill=""#AEBBC9"" Width=""8"" Height=""4"" HorizontalAlignment=""Right"" VerticalAlignment=""Center"" Margin=""0,0,10,0""/>
+                    <Popup x:Name=""Popup"" Placement=""Bottom"" IsOpen=""{TemplateBinding IsDropDownOpen}"" AllowsTransparency=""True"" Focusable=""False"" PopupAnimation=""Fade"">
+                        <Border Background=""#121B25"" BorderBrush=""#14B8A6"" BorderThickness=""1"" Width=""{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"">
+                            <ScrollViewer MaxHeight=""220"">
+                                <ItemsPresenter/>
+                            </ScrollViewer>
+                        </Border>
+                    </Popup>
+                </Grid>
+                <ControlTemplate.Triggers>
+                    <Trigger Property=""IsMouseOver"" Value=""True"">
+                        <Setter TargetName=""Root"" Property=""BorderBrush"" Value=""#53687B""/>
+                    </Trigger>
+                    <Trigger Property=""IsDropDownOpen"" Value=""True"">
+                        <Setter TargetName=""Root"" Property=""BorderBrush"" Value=""#14B8A6""/>
+                    </Trigger>
+                    <Trigger Property=""IsEnabled"" Value=""False"">
+                        <Setter TargetName=""Root"" Property=""Background"" Value=""#101720""/>
+                        <Setter TargetName=""Root"" Property=""BorderBrush"" Value=""#263240""/>
+                        <Setter Property=""Foreground"" Value=""#6C7886""/>
+                        <Setter TargetName=""Arrow"" Property=""Fill"" Value=""#6C7886""/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>");
+        }
         private static Style StyleForCheckBox() { var style = new Style(typeof(CheckBox)); style.Setters.Add(new Setter(Control.ForegroundProperty, BrushFrom(226, 232, 240))); return style; }
-        private static Style StyleForProgressBar() { var style = new Style(typeof(ProgressBar)); style.Setters.Add(new Setter(Control.ForegroundProperty, BrushFrom(34, 197, 94))); style.Setters.Add(new Setter(Control.BackgroundProperty, BrushFrom(30, 41, 59))); return style; }
+        private static Style StyleForProgressBar() { var style = new Style(typeof(ProgressBar)); style.Setters.Add(new Setter(Control.ForegroundProperty, BrushFrom(20, 184, 166))); style.Setters.Add(new Setter(Control.BackgroundProperty, BrushFrom(25, 36, 48))); return style; }
+        private static Style StyleForComboBoxItem()
+        {
+            return (Style)XamlReader.Parse(
+@"<Style xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"" xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"" TargetType=""ComboBoxItem"">
+    <Setter Property=""Background"" Value=""#121B25""/>
+    <Setter Property=""Foreground"" Value=""#E2E8F0""/>
+    <Setter Property=""Padding"" Value=""8,5,8,5""/>
+    <Setter Property=""Template"">
+        <Setter.Value>
+            <ControlTemplate TargetType=""ComboBoxItem"">
+                <Border x:Name=""Root"" Background=""{TemplateBinding Background}"" Padding=""{TemplateBinding Padding}"">
+                    <ContentPresenter/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property=""IsHighlighted"" Value=""True"">
+                        <Setter TargetName=""Root"" Property=""Background"" Value=""#163D43""/>
+                    </Trigger>
+                    <Trigger Property=""IsSelected"" Value=""True"">
+                        <Setter TargetName=""Root"" Property=""Background"" Value=""#145A57""/>
+                    </Trigger>
+                    <Trigger Property=""IsEnabled"" Value=""False"">
+                        <Setter Property=""Foreground"" Value=""#6C7886""/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>");
+        }
+
+        private static Style StyleForSlider()
+        {
+            return (Style)XamlReader.Parse(
+@"<Style xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"" xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"" TargetType=""Slider"">
+    <Setter Property=""Template"">
+        <Setter.Value>
+            <ControlTemplate TargetType=""Slider"">
+                <Grid Height=""24"">
+                    <Track x:Name=""PART_Track"" VerticalAlignment=""Center"">
+                        <Track.DecreaseRepeatButton>
+                            <RepeatButton Command=""Slider.DecreaseLarge"" Background=""#14B8A6"" BorderBrush=""#14B8A6"" Height=""4""/>
+                        </Track.DecreaseRepeatButton>
+                        <Track.IncreaseRepeatButton>
+                            <RepeatButton Command=""Slider.IncreaseLarge"" Background=""#374656"" BorderBrush=""#374656"" Height=""4""/>
+                        </Track.IncreaseRepeatButton>
+                        <Track.Thumb>
+                            <Thumb Width=""14"" Height=""18"" Background=""#E2E8F0"" BorderBrush=""#14B8A6"" BorderThickness=""1""/>
+                        </Track.Thumb>
+                    </Track>
+                </Grid>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>");
+        }
+
+        private static void ApplyPrimaryButton(Button button)
+        {
+            button.Background = BrushFrom(20, 184, 166);
+            button.Foreground = Brushes.White;
+            button.BorderBrush = BrushFrom(45, 212, 191);
+        }
+
+        private static void ApplyAccentButton(Button button)
+        {
+            button.Background = BrushFrom(29, 196, 180);
+            button.Foreground = Brushes.White;
+            button.BorderBrush = BrushFrom(77, 228, 211);
+        }
+
+        private static void ApplySecondaryButton(Button button)
+        {
+            button.Background = BrushFrom(20, 30, 42);
+            button.Foreground = BrushFrom(244, 247, 250);
+            button.BorderBrush = BrushFrom(55, 70, 86);
+        }
     }
 
     public sealed class DecimalBox : TextBox
     {
-        public DecimalBox(string value) { Text = value; Width = 100; Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)); Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)); BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)); Padding = new Thickness(6, 3, 6, 3); }
+        public DecimalBox(string value) { Text = value; Width = 100; Background = new SolidColorBrush(Color.FromRgb(18, 27, 37)); Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)); BorderBrush = new SolidColorBrush(Color.FromRgb(55, 70, 86)); Padding = new Thickness(7, 4, 7, 4); }
         public double GetDouble(double fallback) { double value; return Double.TryParse(Text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? value : fallback; }
         public int GetInt(int fallback) { int value; return Int32.TryParse(Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) ? value : fallback; }
-    }
-
-    public sealed class BackgroundPreset
-    {
-        public BackgroundPreset(string name, int tolerance, int softness, int colorDespill, int edgeCleanup)
-        {
-            Name = name;
-            Tolerance = Clamp(tolerance);
-            Softness = Clamp(softness);
-            ColorDespill = Clamp(colorDespill);
-            EdgeCleanup = Clamp(edgeCleanup);
-        }
-
-        public string Name { get; private set; }
-        public int Tolerance { get; set; }
-        public int Softness { get; set; }
-        public int ColorDespill { get; set; }
-        public int EdgeCleanup { get; set; }
-
-        public string Serialize()
-        {
-            return Escape(Name) + "\t" + Clamp(Tolerance).ToString(CultureInfo.InvariantCulture) + "\t" + Clamp(Softness).ToString(CultureInfo.InvariantCulture) + "\t" + Clamp(ColorDespill).ToString(CultureInfo.InvariantCulture) + "\t" + Clamp(EdgeCleanup).ToString(CultureInfo.InvariantCulture);
-        }
-
-        public static BackgroundPreset TryParse(string line)
-        {
-            if (String.IsNullOrWhiteSpace(line)) return null;
-            var parts = line.Split('\t');
-            if (parts.Length != 5) return null;
-            int tolerance, softness, colorDespill, edgeCleanup;
-            if (!Int32.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out tolerance)) return null;
-            if (!Int32.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out softness)) return null;
-            if (!Int32.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out colorDespill)) return null;
-            if (!Int32.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out edgeCleanup)) return null;
-            return new BackgroundPreset(Unescape(parts[0]), tolerance, softness, colorDespill, edgeCleanup);
-        }
-
-        private static int Clamp(int value) { return Math.Max(0, Math.Min(255, value)); }
-        private static string Escape(string value) { return (value ?? String.Empty).Replace("\\", "\\\\").Replace("\t", "\\t").Replace("\r", String.Empty).Replace("\n", String.Empty); }
-        private static string Unescape(string value) { return (value ?? String.Empty).Replace("\\t", "\t").Replace("\\\\", "\\"); }
     }
 
     public sealed class PromptDialog : Window
@@ -1878,20 +2019,4 @@ namespace VideoToAnimationTool.Desktop
         }
     }
 
-    public sealed class UndoBatch
-    {
-        public UndoBatch(string folder, string restoreFolder, string selectPath) { Folder = folder; RestoreFolder = restoreFolder; SelectPath = selectPath; Items = new List<UndoItem>(); }
-        public string Folder { get; private set; }
-        public string RestoreFolder { get; private set; }
-        public string SelectPath { get; private set; }
-        public List<UndoItem> Items { get; private set; }
-    }
-
-    public sealed class UndoItem
-    {
-        public UndoItem(string path, bool existed, byte[] previousBytes) { Path = path; Existed = existed; PreviousBytes = previousBytes; }
-        public string Path { get; private set; }
-        public bool Existed { get; private set; }
-        public byte[] PreviousBytes { get; private set; }
-    }
 }

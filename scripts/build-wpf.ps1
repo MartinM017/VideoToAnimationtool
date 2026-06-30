@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $buildDir = Join-Path $repoRoot 'build'
 $outputPath = Join-Path $buildDir 'VideoToAnimationTool.exe'
+$rootOutputPath = Join-Path $repoRoot 'VideoToAnimationTool.exe'
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 
 if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
@@ -37,13 +38,10 @@ $systemXaml = Get-AssemblyPath -Name 'System.Xaml.dll'
 
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
-$sources = @(
-    'src\VideoToAnimationTool.CSharp\Core\PathUtils.cs',
-    'src\VideoToAnimationTool.CSharp\Core\ExportOptionsValidator.cs',
-    'src\VideoToAnimationTool.CSharp\Core\FfmpegHelper.cs',
-    'src\VideoToAnimationTool.CSharp\App\Program.cs',
-    'src\VideoToAnimationTool.CSharp\App\MainWindow.cs'
-) | ForEach-Object { Join-Path $repoRoot $_ }
+$sources = @()
+$sources += Get-ChildItem -Path (Join-Path $repoRoot 'src\VideoToAnimationTool.Core') -Recurse -Filter '*.cs' | ForEach-Object { $_.FullName }
+$sources += Get-ChildItem -Path (Join-Path $repoRoot 'src\VideoToAnimationTool.Desktop') -Recurse -Filter '*.cs' | ForEach-Object { $_.FullName }
+$sources += Join-Path $repoRoot 'VideoToAnimationToolDesktop.cs'
 
 & $compiler `
     /nologo `
@@ -62,3 +60,5 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Built $outputPath"
+Copy-Item -LiteralPath $outputPath -Destination $rootOutputPath -Force
+Write-Host "Updated $rootOutputPath"

@@ -301,7 +301,7 @@ function Start-FrameExport {
 }
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'AI Character Sequence Frame Tool'
+$form.Text = 'Video to Animation Tool'
 $form.StartPosition = 'CenterScreen'
 $form.Size = New-Object System.Drawing.Size(1180, 760)
 $form.MinimumSize = New-Object System.Drawing.Size(1020, 680)

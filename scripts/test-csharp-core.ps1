@@ -11,12 +11,9 @@ if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
 
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
-$sources = @(
-    'tests\CSharpCoreTests.cs',
-    'src\VideoToAnimationTool.CSharp\Core\PathUtils.cs',
-    'src\VideoToAnimationTool.CSharp\Core\ExportOptionsValidator.cs',
-    'src\VideoToAnimationTool.CSharp\Core\FfmpegHelper.cs'
-) | ForEach-Object { Join-Path $repoRoot $_ }
+$sources = @()
+$sources += Join-Path $repoRoot 'tests\CSharpCoreTests.cs'
+$sources += Get-ChildItem -Path (Join-Path $repoRoot 'src\VideoToAnimationTool.Core') -Recurse -Filter '*.cs' | ForEach-Object { $_.FullName }
 
 & $compiler /nologo /target:exe /out:$outputPath $sources
 if ($LASTEXITCODE -ne 0) {
